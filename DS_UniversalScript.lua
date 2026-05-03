@@ -44,7 +44,7 @@ local L = {
     air_start = {"开启踏空", "Start Air Walk"},
     air_stop = {"关闭踏空", "Stop Air Walk"},
     -- 战斗模块翻译
-    combat_title = {"DS枪战中心", "DS Gun Center"},
+    combat_title = {"DS枪战脚本", "DS Gun Script"},
     aim_section = {"自瞄设置", "Aimbot"},
     aim_toggle = {"开启自瞄", "Enable Aimbot"},
     part_head = {"锁定：头部", "Target: Head"},
@@ -92,27 +92,24 @@ local function playSound()
     end)
 end
 
--- 主窗口
+-- 主窗口框架（固定大小，可滚动内容）
 local m = Instance.new("Frame", g)
 m.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-m.Size = UDim2.new(0, 300, 0, 0)
-m.AutomaticSize = Enum.AutomaticSize.Y
+m.Size = UDim2.new(0, 300, 0, 480) -- 固定高度
 m.Position = UDim2.new(0.5, -150, 0.1, 0)
 m.BorderSizePixel = 0
+m.ClipsDescendants = true
 Instance.new("UICorner", m).CornerRadius = UDim.new(0, 10)
 local mainStroke = Instance.new("UIStroke", m)
 mainStroke.Thickness = 2
 mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-local ml = Instance.new("UIListLayout", m)
-ml.Padding = UDim.new(0, 8)
-ml.HorizontalAlignment = Enum.HorizontalAlignment.Center
-ml.SortOrder = Enum.SortOrder.LayoutOrder
 
--- 标题栏
+-- 标题栏（固定在顶部）
 local t = Instance.new("Frame", m)
 t.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 t.Size = UDim2.new(1, -20, 0, 40)
-t.BorderSizePixel = 0 t.LayoutOrder = 0
+t.Position = UDim2.new(0, 10, 0, 5)
+t.BorderSizePixel = 0
 Instance.new("UICorner", t).CornerRadius = UDim.new(0, 8)
 local dr = Instance.new("TextButton", t)
 dr.BackgroundTransparency = 1 dr.Size = UDim2.new(1, 0, 1, 0) dr.Text = "" dr.ZIndex = 0
@@ -141,8 +138,12 @@ clsB.TextColor3 = Color3.fromRGB(255, 255, 255) clsB.BackgroundColor3 = Color3.f
 clsB.Font = Enum.Font.GothamBold clsB.TextSize = 14 clsB.Size = UDim2.new(0, 30, 0, 28)
 clsB.Position = UDim2.new(1, -34, 0.5, -14) clsB.ZIndex = 2 clsB.BorderSizePixel = 0
 Instance.new("UICorner", clsB).CornerRadius = UDim.new(0, 4)
+clsB.MouseButton1Click:Connect(function()
+    unloadCombatScript()
+    g:Destroy()
+end) -- 修复关闭按钮
 
--- 信息提示
+-- 信息提示（在标题栏内）
 local inf = Instance.new("Frame", t) inf.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 inf.Size = UDim2.new(0, 240, 0, 64) inf.Position = UDim2.new(0, 10, 1, 6) inf.Visible = false inf.ZIndex = 10
 inf.BorderSizePixel = 0 Instance.new("UICorner", inf).CornerRadius = UDim.new(0, 6)
@@ -153,22 +154,47 @@ itx.TextSize = 14 itx.TextWrapped = true itx.ZIndex = 10 reg(itx, "info")
 local cib = Instance.new("TextButton", inf) cib.TextColor3 = Color3.fromRGB(255, 255, 255) cib.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 cib.Font = Enum.Font.GothamBold cib.TextSize = 12 cib.Size = UDim2.new(0, 46, 0, 22) cib.Position = UDim2.new(1, -54, 1, -28)
 cib.ZIndex = 11 cib.BorderSizePixel = 0 Instance.new("UICorner", cib).CornerRadius = UDim.new(0, 4) reg(cib, "close")
-ti.MouseButton1Click:Connect(function() inf.Visible = not inf.Visible end)
-cib.MouseButton1Click:Connect(function() inf.Visible = false end)
-clsB.MouseButton1Click:Connect(function()
-    unloadCombatScript()
-    g:Destroy()
+ti.MouseButton1Click:Connect(function()
+    inf.Visible = not inf.Visible
+end)
+cib.MouseButton1Click:Connect(function()
+    inf.Visible = false
 end)
 
--- 最小化
+-- 最小化按钮
 local mRest = Instance.new("TextButton", g) mRest.Text = "DS" mRest.TextColor3 = Color3.fromRGB(255, 255, 255)
 mRest.BackgroundColor3 = Color3.fromRGB(35, 35, 35) mRest.Font = Enum.Font.GothamBold mRest.TextSize = 14
 mRest.Size = UDim2.new(0, 44, 0, 44) mRest.Position = UDim2.new(1, -54, 0.5, -22) mRest.Visible = false mRest.BorderSizePixel = 0
 Instance.new("UICorner", mRest).CornerRadius = UDim.new(1, 0)
-minB.MouseButton1Click:Connect(function() m.Visible = false; mRest.Visible = true end)
-mRest.MouseButton1Click:Connect(function() m.Visible = true; mRest.Visible = false end)
+minB.MouseButton1Click:Connect(function()
+    m.Visible = false
+    mRest.Visible = true
+end)
+mRest.MouseButton1Click:Connect(function()
+    m.Visible = true
+    mRest.Visible = false
+end)
 
--- 拖动
+-- 可滚动内容区域
+local scroll = Instance.new("ScrollingFrame", m)
+scroll.Size = UDim2.new(1, -4, 1, -50) -- 减去标题栏高度
+scroll.Position = UDim2.new(0, 2, 0, 48)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 4
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0) -- 后续动态更新
+scroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+
+local content = Instance.new("Frame", scroll)
+content.BackgroundTransparency = 1
+content.Size = UDim2.new(1, 0, 0, 0)
+content.AutomaticSize = Enum.AutomaticSize.Y
+local contentList = Instance.new("UIListLayout", content)
+contentList.Padding = UDim.new(0, 8)
+contentList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+contentList.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- 拖动窗口（标题栏）
 local drag, ds, fs = false, nil, nil
 dr.InputBegan:Connect(function(inp)
     if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
@@ -185,7 +211,13 @@ U.InputChanged:Connect(function(inp)
     end
 end)
 
--- 状态
+-- 滚动区域尺寸更新
+local function updateCanvas()
+    scroll.CanvasSize = UDim2.new(0, 0, 0, contentList.AbsoluteContentSize.Y + 10)
+end
+contentList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
+
+-- State
 local s = {
     walkspeed = false, walkspeedValue = 50,
     flyspeed = true, flyspeedValue = 50,
@@ -226,9 +258,9 @@ local function raesp() for _, v in ipairs(Players:GetPlayers()) do if v ~= p the
 Players.PlayerAdded:Connect(function(pl) if s.esp and pl ~= p then aesp(pl) end end)
 Players.PlayerRemoving:Connect(resp)
 
--- UI 构造辅助
+-- UI 构造辅助（改为添加到 content 面板）
 local function adjRow(key, stateKey, def, ord, parent, noToggle)
-    parent = parent or m
+    parent = parent or content -- 改为 content
     local r = Instance.new("Frame", parent) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     r.Size = UDim2.new(1, -20, 0, 44) r.LayoutOrder = ord r.BorderSizePixel = 0
     Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
@@ -257,7 +289,7 @@ local function adjRow(key, stateKey, def, ord, parent, noToggle)
 end
 
 local function toggleRow(key, stateKey, ord, parent)
-    parent = parent or m
+    parent = parent or content
     local r = Instance.new("Frame", parent) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     r.Size = UDim2.new(1, -20, 0, 44) r.LayoutOrder = ord r.BorderSizePixel = 0
     Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
@@ -275,7 +307,46 @@ local function toggleRow(key, stateKey, ord, parent)
     end)
 end
 
--- 飞行与踏空
+-- 分类折叠（使用 content 作为父级）
+local function categoryRow(titleKey, ord)
+    local r = Instance.new("Frame", content) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0
+    Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
+    local rl = Instance.new("UIListLayout", r) rl.Padding = UDim.new(0, 4) rl.HorizontalAlignment = Enum.HorizontalAlignment.Center rl.SortOrder = Enum.SortOrder.LayoutOrder
+    local top = Instance.new("Frame", r) top.BackgroundTransparency = 1 top.Size = UDim2.new(1, 0, 0, 44) top.LayoutOrder = 0
+    local lb = Instance.new("TextLabel", top) lb.TextColor3 = Color3.fromRGB(210, 210, 210) lb.BackgroundTransparency = 1 lb.Size = UDim2.new(1, -80, 1, 0) lb.Position = UDim2.new(0, 10, 0, 0) lb.Font = Enum.Font.GothamMedium lb.TextSize = 13 lb.TextXAlignment = Enum.TextXAlignment.Left reg(lb, titleKey)
+    local ex = Instance.new("TextButton", top) ex.Text = "▼" ex.BackgroundColor3 = Color3.fromRGB(55, 55, 55) ex.TextColor3 = Color3.fromRGB(255, 255, 255) ex.Font = Enum.Font.GothamBold ex.TextSize = 12 ex.Size = UDim2.new(0, 28, 0, 28) ex.Position = UDim2.new(1, -36, 0.5, -14) ex.BorderSizePixel = 0 Instance.new("UICorner", ex).CornerRadius = UDim.new(0, 4)
+    local sf = Instance.new("Frame", r) sf.BackgroundTransparency = 1 sf.Size = UDim2.new(1, -16, 0, 0) sf.AutomaticSize = Enum.AutomaticSize.Y sf.Visible = false sf.LayoutOrder = 1
+    local sl = Instance.new("UIListLayout", sf) sl.Padding = UDim.new(0, 4) sl.HorizontalAlignment = Enum.HorizontalAlignment.Center sl.SortOrder = Enum.SortOrder.LayoutOrder
+    local exp = false
+    ex.MouseButton1Click:Connect(function() exp = not exp; ex.Text = exp and "▲" or "▼"; sf.Visible = exp end)
+    return sf
+end
+
+-- 人物分类
+local playerCat = categoryRow("player_cat", 1)
+adjRow("walkspeed", "walkspeed", 50, 1, playerCat)
+toggleRow("infjump", "infiniteJump", 2, playerCat)
+adjRow("gravity", "gravity", 1, 3, playerCat)
+toggleRow("noclip", "noclip", 4, playerCat)
+adjRow("speed", "speedMultiplier", 2.0, 5, playerCat)
+
+-- 飞行分类
+local flyAirCat = categoryRow("fly_air_cat", 2)
+adjRow("flyspeed", "flyspeed", 50, 1, flyAirCat, true)
+local flyBtn = Instance.new("TextButton", Instance.new("Frame", flyAirCat))
+flyBtn.Parent.Size = UDim2.new(1, -20, 0, 44); flyBtn.Parent.LayoutOrder = 2; flyBtn.Parent.BackgroundColor3 = Color3.fromRGB(35, 35, 35); flyBtn.Parent.BorderSizePixel = 0
+Instance.new("UICorner", flyBtn.Parent).CornerRadius = UDim.new(0, 8)
+flyBtn.TextColor3 = Color3.fromRGB(255, 255, 255) flyBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 220) flyBtn.Font = Enum.Font.GothamBold flyBtn.TextSize = 14 flyBtn.Size = UDim2.new(1, -16, 0, 34) flyBtn.Position = UDim2.new(0, 8, 0.5, -17) flyBtn.BorderSizePixel = 0
+Instance.new("UICorner", flyBtn).CornerRadius = UDim.new(0, 6) reg(flyBtn, "fly_panel")
+flyBtn.MouseButton1Click:Connect(function() if flyW then destroyFly() else showFly() end end)
+local airBtn = Instance.new("TextButton", Instance.new("Frame", flyAirCat))
+airBtn.Parent.Size = UDim2.new(1, -20, 0, 44); airBtn.Parent.LayoutOrder = 3; airBtn.Parent.BackgroundColor3 = Color3.fromRGB(35, 35, 35); airBtn.Parent.BorderSizePixel = 0
+Instance.new("UICorner", airBtn.Parent).CornerRadius = UDim.new(0, 8)
+airBtn.TextColor3 = Color3.fromRGB(255, 255, 255) airBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 220) airBtn.Font = Enum.Font.GothamBold airBtn.TextSize = 14 airBtn.Size = UDim2.new(1, -16, 0, 34) airBtn.Position = UDim2.new(0, 8, 0.5, -17) airBtn.BorderSizePixel = 0
+Instance.new("UICorner", airBtn).CornerRadius = UDim.new(0, 6) reg(airBtn, "airwalk_panel")
+airBtn.MouseButton1Click:Connect(function() if airW then destroyAirWalk() else showAirWalk() end end)
+
+-- 飞行/踏空面板（保持独立，仍添加到 g 中）
 local flyActive, vert, flyW, flyRest, flyStroke = false, 0, nil, nil, nil
 local function destroyFly()
     flyActive, vert = false, 0
@@ -347,48 +418,9 @@ local function showAirWalk()
     amin.MouseButton1Click:Connect(function() airW.Visible = false; airRest.Visible = true end) acls.MouseButton1Click:Connect(function() destroyAirWalk() end) airRest.MouseButton1Click:Connect(function() airW.Visible = true; airRest.Visible = false end)
 end
 
--- 分类折叠
-local function categoryRow(titleKey, ord)
-    local r = Instance.new("Frame", m) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0
-    Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
-    local rl = Instance.new("UIListLayout", r) rl.Padding = UDim.new(0, 4) rl.HorizontalAlignment = Enum.HorizontalAlignment.Center rl.SortOrder = Enum.SortOrder.LayoutOrder
-    local top = Instance.new("Frame", r) top.BackgroundTransparency = 1 top.Size = UDim2.new(1, 0, 0, 44) top.LayoutOrder = 0
-    local lb = Instance.new("TextLabel", top) lb.TextColor3 = Color3.fromRGB(210, 210, 210) lb.BackgroundTransparency = 1 lb.Size = UDim2.new(1, -80, 1, 0) lb.Position = UDim2.new(0, 10, 0, 0) lb.Font = Enum.Font.GothamMedium lb.TextSize = 13 lb.TextXAlignment = Enum.TextXAlignment.Left reg(lb, titleKey)
-    local ex = Instance.new("TextButton", top) ex.Text = "▼" ex.BackgroundColor3 = Color3.fromRGB(55, 55, 55) ex.TextColor3 = Color3.fromRGB(255, 255, 255) ex.Font = Enum.Font.GothamBold ex.TextSize = 12 ex.Size = UDim2.new(0, 28, 0, 28) ex.Position = UDim2.new(1, -36, 0.5, -14) ex.BorderSizePixel = 0 Instance.new("UICorner", ex).CornerRadius = UDim.new(0, 4)
-    local sf = Instance.new("Frame", r) sf.BackgroundTransparency = 1 sf.Size = UDim2.new(1, -16, 0, 0) sf.AutomaticSize = Enum.AutomaticSize.Y sf.Visible = false sf.LayoutOrder = 1
-    local sl = Instance.new("UIListLayout", sf) sl.Padding = UDim.new(0, 4) sl.HorizontalAlignment = Enum.HorizontalAlignment.Center sl.SortOrder = Enum.SortOrder.LayoutOrder
-    local exp = false
-    ex.MouseButton1Click:Connect(function() exp = not exp; ex.Text = exp and "▲" or "▼"; sf.Visible = exp end)
-    return sf
-end
-
--- 人物分类
-local playerCat = categoryRow("player_cat", 1)
-adjRow("walkspeed", "walkspeed", 50, 1, playerCat)
-toggleRow("infjump", "infiniteJump", 2, playerCat)
-adjRow("gravity", "gravity", 1, 3, playerCat)
-toggleRow("noclip", "noclip", 4, playerCat)
-adjRow("speed", "speedMultiplier", 2.0, 5, playerCat)
-
--- 飞行分类
-local flyAirCat = categoryRow("fly_air_cat", 2)
-adjRow("flyspeed", "flyspeed", 50, 1, flyAirCat, true)
-local flyBtn = Instance.new("TextButton", Instance.new("Frame", flyAirCat))
-flyBtn.Parent.Size = UDim2.new(1, -20, 0, 44); flyBtn.Parent.LayoutOrder = 2; flyBtn.Parent.BackgroundColor3 = Color3.fromRGB(35, 35, 35); flyBtn.Parent.BorderSizePixel = 0
-Instance.new("UICorner", flyBtn.Parent).CornerRadius = UDim.new(0, 8)
-flyBtn.TextColor3 = Color3.fromRGB(255, 255, 255) flyBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 220) flyBtn.Font = Enum.Font.GothamBold flyBtn.TextSize = 14 flyBtn.Size = UDim2.new(1, -16, 0, 34) flyBtn.Position = UDim2.new(0, 8, 0.5, -17) flyBtn.BorderSizePixel = 0
-Instance.new("UICorner", flyBtn).CornerRadius = UDim.new(0, 6) reg(flyBtn, "fly_panel")
-flyBtn.MouseButton1Click:Connect(function() if flyW then destroyFly() else showFly() end end)
-local airBtn = Instance.new("TextButton", Instance.new("Frame", flyAirCat))
-airBtn.Parent.Size = UDim2.new(1, -20, 0, 44); airBtn.Parent.LayoutOrder = 3; airBtn.Parent.BackgroundColor3 = Color3.fromRGB(35, 35, 35); airBtn.Parent.BorderSizePixel = 0
-Instance.new("UICorner", airBtn.Parent).CornerRadius = UDim.new(0, 8)
-airBtn.TextColor3 = Color3.fromRGB(255, 255, 255) airBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 220) airBtn.Font = Enum.Font.GothamBold airBtn.TextSize = 14 airBtn.Size = UDim2.new(1, -16, 0, 34) airBtn.Position = UDim2.new(0, 8, 0.5, -17) airBtn.BorderSizePixel = 0
-Instance.new("UICorner", airBtn).CornerRadius = UDim.new(0, 6) reg(airBtn, "airwalk_panel")
-airBtn.MouseButton1Click:Connect(function() if airW then destroyAirWalk() else showAirWalk() end end)
-
--- ESP分类
+-- ESP 分类（添加到 content）
 local function espRow(ord)
-    local r = Instance.new("Frame", m) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0
+    local r = Instance.new("Frame", content) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0
     Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
     local rl = Instance.new("UIListLayout", r) rl.Padding = UDim.new(0, 4) rl.HorizontalAlignment = Enum.HorizontalAlignment.Center rl.SortOrder = Enum.SortOrder.LayoutOrder
     local top = Instance.new("Frame", r) top.BackgroundTransparency = 1 top.Size = UDim2.new(1, 0, 0, 44) top.LayoutOrder = 0
@@ -414,7 +446,7 @@ espRow(3)
 
 -- 服务器分类
 local function serverRow(ord)
-    local r = Instance.new("Frame", m) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0 Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
+    local r = Instance.new("Frame", content) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0 Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
     local rl = Instance.new("UIListLayout", r) rl.Padding = UDim.new(0, 4) rl.HorizontalAlignment = Enum.HorizontalAlignment.Center rl.SortOrder = Enum.SortOrder.LayoutOrder
     local top = Instance.new("Frame", r) top.BackgroundTransparency = 1 top.Size = UDim2.new(1, 0, 0, 44) top.LayoutOrder = 0
     local lb = Instance.new("TextLabel", top) lb.TextColor3 = Color3.fromRGB(210, 210, 210) lb.BackgroundTransparency = 1 lb.Size = UDim2.new(1, -80, 1, 0) lb.Position = UDim2.new(0, 10, 0, 0) lb.Font = Enum.Font.GothamMedium lb.TextSize = 13 lb.TextXAlignment = Enum.TextXAlignment.Left reg(lb, "server")
@@ -641,28 +673,25 @@ local function loadCombatScript()
     end)
     table.insert(combatConnections, playerRemovingConn)
 
-    -- 战斗GUI
+    -- 战斗GUI（固定大小可滚动）
     combatGui = Instance.new("ScreenGui", g)
     local CombatMain = Instance.new("Frame", combatGui)
-    CombatMain.Size = UDim2.new(0, 260, 0, 0)
-    CombatMain.AutomaticSize = Enum.AutomaticSize.Y
+    CombatMain.Size = UDim2.new(0, 260, 0, 420)
     CombatMain.Position = UDim2.new(0.5, -130, 0.3, 0)
     CombatMain.BackgroundColor3 = Color3.fromRGB(30,30,30)
     CombatMain.BorderSizePixel = 0
+    CombatMain.ClipsDescendants = true
     Instance.new("UICorner", CombatMain).CornerRadius = UDim.new(0, 8)
-    local combatList = Instance.new("UIListLayout", CombatMain)
-    combatList.Padding = UDim.new(0, 6)
-    combatList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    combatList.SortOrder = Enum.SortOrder.LayoutOrder
-    -- 标题
+
+    -- 标题栏
     local cTitleBar = Instance.new("Frame", CombatMain)
     cTitleBar.Size = UDim2.new(1, -16, 0, 30)
+    cTitleBar.Position = UDim2.new(0, 8, 0, 5)
     cTitleBar.BackgroundColor3 = Color3.fromRGB(40,40,40)
     cTitleBar.BorderSizePixel = 0
-    cTitleBar.LayoutOrder = 0
     Instance.new("UICorner", cTitleBar).CornerRadius = UDim.new(0, 6)
     local cTitle = Instance.new("TextLabel", cTitleBar)
-    cTitle.Size = UDim2.new(1, -40, 1, 0)
+    cTitle.Size = UDim2.new(1, -50, 1, 0)
     cTitle.Position = UDim2.new(0, 10, 0, 0)
     cTitle.BackgroundTransparency = 1
     cTitle.TextColor3 = Color3.new(1,1,1)
@@ -670,14 +699,20 @@ local function loadCombatScript()
     cTitle.TextSize = 14
     cTitle.TextXAlignment = Enum.TextXAlignment.Left
     table.insert(combatLangObjs, {obj = cTitle, key = "combat_title"})
-    local cDrag = Instance.new("TextButton", cTitleBar)
-    cDrag.BackgroundTransparency = 1
-    cDrag.Size = UDim2.new(1, 0, 1, 0)
-    cDrag.Text = ""
-    cDrag.ZIndex = 0
+    -- 最小化按钮
+    local cMin = Instance.new("TextButton", cTitleBar)
+    cMin.Size = UDim2.new(0, 20, 0, 20)
+    cMin.Position = UDim2.new(1, -50, 0.5, -10)
+    cMin.BackgroundColor3 = Color3.fromRGB(55,55,55)
+    cMin.TextColor3 = Color3.new(1,1,1)
+    cMin.Font = Enum.Font.GothamBold
+    cMin.TextSize = 14
+    cMin.Text = "—"
+    cMin.BorderSizePixel = 0
+    Instance.new("UICorner", cMin).CornerRadius = UDim.new(0, 4)
     local cClose = Instance.new("TextButton", cTitleBar)
-    cClose.Size = UDim2.new(0, 24, 0, 24)
-    cClose.Position = UDim2.new(1, -28, 0.5, -12)
+    cClose.Size = UDim2.new(0, 20, 0, 20)
+    cClose.Position = UDim2.new(1, -25, 0.5, -10)
     cClose.BackgroundColor3 = Color3.fromRGB(200,50,50)
     cClose.TextColor3 = Color3.new(1,1,1)
     cClose.Font = Enum.Font.GothamBold
@@ -687,7 +722,12 @@ local function loadCombatScript()
     Instance.new("UICorner", cClose).CornerRadius = UDim.new(0, 4)
     cClose.MouseButton1Click:Connect(function() unloadCombatScript() end)
 
-    -- 拖动战斗窗口
+    -- 拖动标题栏
+    local cDrag = Instance.new("TextButton", cTitleBar)
+    cDrag.BackgroundTransparency = 1
+    cDrag.Size = UDim2.new(1, -70, 1, 0)
+    cDrag.Text = ""
+    cDrag.ZIndex = 0
     local cdrag, cds, cfs = false, nil, nil
     cDrag.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
@@ -704,10 +744,55 @@ local function loadCombatScript()
         end
     end)
 
+    -- 战斗内容可滚动区域
+    local cScroll = Instance.new("ScrollingFrame", CombatMain)
+    cScroll.Size = UDim2.new(1, -4, 1, -40)
+    cScroll.Position = UDim2.new(0, 2, 0, 38)
+    cScroll.BackgroundTransparency = 1
+    cScroll.BorderSizePixel = 0
+    cScroll.ScrollBarThickness = 4
+    cScroll.CanvasSize = UDim2.new(0,0,0,0)
+    cScroll.ScrollBarImageColor3 = Color3.fromRGB(100,100,100)
+
+    local cContent = Instance.new("Frame", cScroll)
+    cContent.BackgroundTransparency = 1
+    cContent.Size = UDim2.new(1, 0, 0, 0)
+    cContent.AutomaticSize = Enum.AutomaticSize.Y
+    local cContentList = Instance.new("UIListLayout", cContent)
+    cContentList.Padding = UDim.new(0, 6)
+    cContentList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    cContentList.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local function updateCanvasC()
+        cScroll.CanvasSize = UDim2.new(0, 0, 0, cContentList.AbsoluteContentSize.Y + 10)
+    end
+    cContentList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvasC)
+
+    -- 最小化/恢复
+    local cRestBtn = Instance.new("TextButton", g)
+    cRestBtn.Text = "枪"
+    cRestBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    cRestBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+    cRestBtn.Font = Enum.Font.GothamBold
+    cRestBtn.TextSize = 14
+    cRestBtn.Size = UDim2.new(0, 44, 0, 44)
+    cRestBtn.Position = UDim2.new(1, -54, 0.5, 130)
+    cRestBtn.Visible = false
+    cRestBtn.BorderSizePixel = 0
+    Instance.new("UICorner", cRestBtn).CornerRadius = UDim.new(1, 0)
+    cMin.MouseButton1Click:Connect(function()
+        CombatMain.Visible = false
+        cRestBtn.Visible = true
+    end)
+    cRestBtn.MouseButton1Click:Connect(function()
+        CombatMain.Visible = true
+        cRestBtn.Visible = false
+    end)
+
     -- 战斗UI辅助
     local combOrder = 1
     local function CAddLabel(key)
-        local lbl = Instance.new("TextLabel", CombatMain)
+        local lbl = Instance.new("TextLabel", cContent)
         lbl.Size = UDim2.new(1, -16, 0, 18)
         lbl.BackgroundTransparency = 1
         lbl.TextColor3 = Color3.fromRGB(255,255,0)
@@ -719,7 +804,7 @@ local function loadCombatScript()
         table.insert(combatLangObjs, {obj = lbl, key = key})
     end
     local function CAddToggle(key, default, callback)
-        local f = Instance.new("Frame", CombatMain)
+        local f = Instance.new("Frame", cContent)
         f.Size = UDim2.new(1, -16, 0, 28)
         f.BackgroundColor3 = Color3.fromRGB(45,45,45)
         f.BorderSizePixel = 0
@@ -757,7 +842,7 @@ local function loadCombatScript()
         return state
     end
     local function CAddSlider(key, min, max, default, callback)
-        local f = Instance.new("Frame", CombatMain)
+        local f = Instance.new("Frame", cContent)
         f.Size = UDim2.new(1, -16, 0, 42)
         f.BackgroundColor3 = Color3.fromRGB(45,45,45)
         f.BorderSizePixel = 0
@@ -790,7 +875,7 @@ local function loadCombatScript()
 
     -- 构建战斗UI
     CAddLabel("aim_section")
-    local partBtn = Instance.new("TextButton", CombatMain)
+    local partBtn = Instance.new("TextButton", cContent)
     partBtn.Size = UDim2.new(1, -16, 0, 24)
     partBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
     partBtn.TextColor3 = Color3.new(1,1,1)
@@ -828,7 +913,7 @@ local function loadCombatScript()
     RefreshESP()
 end
 
--- 战斗模块分类按钮
+-- 战斗模块分类按钮（添加到 content）
 local combatCat = categoryRow("combat_cat", 5)
 local combatLoadBtn = Instance.new("TextButton", Instance.new("Frame", combatCat))
 combatLoadBtn.Parent.Size = UDim2.new(1, -20, 0, 44); combatLoadBtn.Parent.LayoutOrder = 1; combatLoadBtn.Parent.BackgroundColor3 = Color3.fromRGB(35, 35, 35); combatLoadBtn.Parent.BorderSizePixel = 0
@@ -889,8 +974,7 @@ R.Heartbeat:Connect(function(dt)
             for _, v in ipairs(Players:GetPlayers()) do
                 if v ~= p and v.Character then
                     local tr = v.Character:FindFirstChild("HumanoidRootPart")
-                    if tr then
-                        local tpos, vis = cam:WorldToViewportPoint(tr.Position)
+                    if tr thenlocal tpos, vis = cam:WorldToViewportPoint(tr.Position)
                         if vis and myPos then
                             local line = espLines[v]
                             if not line then line = Drawing.new("Line") line.Thickness = 2 line.Color = Color3.fromRGB(255, 0, 0) espLines[v] = line end
