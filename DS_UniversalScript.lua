@@ -1,7 +1,10 @@
 local p = game:GetService("Players").LocalPlayer
+local Players = game:GetService("Players")
 local U = game:GetService("UserInputService")
 local R = game:GetService("RunService")
 local TS = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
 local g = Instance.new("ScreenGui", p:WaitForChild("PlayerGui"))
 g.ResetOnSpawn = false
 
@@ -27,6 +30,9 @@ local L = {
     reset = {"重置人物", "Reset Character"},
     player_cat = {"人物", "Player"},
     fly_air_cat = {"飞行与踏空", "Fly & Air Walk"},
+    combat_cat = {"战斗模块", "Combat Module"},
+    combat_load = {"加载枪战脚本", "Load Gun Script"},
+    combat_unload = {"卸载枪战脚本", "Unload Gun Script"},
     on_ = {"开", "ON"},
     off = {"关", "OFF"},
     fly_title = {"ds飞行", "ds Fly"},
@@ -47,6 +53,16 @@ local function applyLang()
     for _, v in ipairs(toggleBtns) do
         v.btn.Text = T(v.state and "on_" or "off")
         v.btn.BackgroundColor3 = v.state and Color3.fromRGB(30, 150, 30) or Color3.fromRGB(180, 35, 35)
+    end
+    if combatLoaded and combatLangObjs then
+        for _, v in ipairs(combatLangObjs) do
+            if v.suffix then
+                local num = v.obj.Text:match(": (.+)$")
+                if num then v.obj.Text = T(v.key)..": "..num end
+            else
+                v.obj.Text = T(v.key)
+            end
+        end
     end
 end
 local function playSound()
@@ -186,9 +202,9 @@ local function resp(pl)
     if eh[pl] then eh[pl]:Destroy(); eh[pl] = nil end
     if espLines[pl] then espLines[pl]:Remove(); espLines[pl] = nil end
 end
-local function raesp() for _, v in ipairs(game:GetService("Players"):GetPlayers()) do if v ~= p then uesp(v) end end end
-game:GetService("Players").PlayerAdded:Connect(function(pl) if s.esp and pl ~= p then aesp(pl) end end)
-game:GetService("Players").PlayerRemoving:Connect(resp)
+local function raesp() for _, v in ipairs(Players:GetPlayers()) do if v ~= p then uesp(v) end end end
+Players.PlayerAdded:Connect(function(pl) if s.esp and pl ~= p then aesp(pl) end end)
+Players.PlayerRemoving:Connect(resp)
 
 -- UI row builder functions
 local function adjRow(key, stateKey, def, ord, parent, noToggle)
@@ -239,7 +255,7 @@ local function toggleRow(key, stateKey, ord, parent)
     end)
 end
 
--- Fly & Air Walk windows (must be defined before category building)
+-- Fly & Air Walk
 local flyActive = false
 local vert = 0
 local flyW, flyRest, flyStroke
@@ -340,7 +356,6 @@ adjRow("speed", "speedMultiplier", 2.0, 5, playerCat)
 -- Fly & Air Walk category
 local flyAirCat = categoryRow("fly_air_cat", 2)
 adjRow("flyspeed", "flyspeed", 50, 1, flyAirCat, true)
-
 local flyBtnRow = function()
     local r = Instance.new("Frame", flyAirCat) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 44) r.LayoutOrder = 2 r.BorderSizePixel = 0
     Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
@@ -349,7 +364,6 @@ local flyBtnRow = function()
     btn.MouseButton1Click:Connect(function() if flyW then destroyFly() else showFly() end end)
 end
 flyBtnRow()
-
 local airBtnRow = function()
     local r = Instance.new("Frame", flyAirCat) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 44) r.LayoutOrder = 3 r.BorderSizePixel = 0
     Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
@@ -359,7 +373,7 @@ local airBtnRow = function()
 end
 airBtnRow()
 
--- ESP category (kept as before)
+-- ESP category
 local function espRow(ord)
     local r = Instance.new("Frame", m) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0
     Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
@@ -381,7 +395,7 @@ local function espRow(ord)
     stoggle("esp_name", "espShowName", 1); stoggle("esp_hl", "espHighlight", 2); stoggle("esp_line", "espLine", 3)
     local exp = false ex.MouseButton1Click:Connect(function() exp = not exp; ex.Text = exp and "▲" or "▼"; sf.Visible = exp end)
     local function umv(a) tb.Text = T(a and "on_" or "off") tb.BackgroundColor3 = a and Color3.fromRGB(30, 150, 30) or Color3.fromRGB(180, 35, 35) end
-    tb.MouseButton1Click:Connect(function() s.esp = not s.esp; umv(s.esp); playSound() if s.esp then for _, v in ipairs(game:GetService("Players"):GetPlayers()) do if v ~= p then aesp(v) end end else for _, v in ipairs(game:GetService("Players"):GetPlayers()) do resp(v) end end end)
+    tb.MouseButton1Click:Connect(function() s.esp = not s.esp; umv(s.esp); playSound() if s.esp then for _, v in ipairs(Players:GetPlayers()) do if v ~= p then aesp(v) end end else for _, v in ipairs(Players:GetPlayers()) do resp(v) end end end)
 end
 espRow(3)
 
@@ -399,6 +413,735 @@ local function serverRow(ord)
     local exp = false ex.MouseButton1Click:Connect(function() exp = not exp; ex.Text = exp and "▲" or "▼"; sf.Visible = exp end)
 end
 serverRow(4)
+
+-- ==================== 战斗模块分类 ====================
+local combatLoaded = false
+local combatGui = nil
+local combatConnections = {}
+local combatLangObjs = {}
+local combatToggleBtns = {}
+
+-- 战斗脚本的翻译
+local combatL = {
+    cn = {
+        combat_title = "DS枪战中心",
+        minimize = "—",
+        restore = "⚡恢复",
+        langBtn = "🌐 中",
+        aim_section = "🎯 自瞄设置",
+        aim_toggle = "开启自瞄",
+        part_head = "锁定: 头部",
+        part_body = "锁定: 身体",
+        obst_check = "障碍检测",
+        team_check = "队伍检测",
+        smooth = "平滑度",
+        radius = "范围半径",
+        esp_section = "👁 绘制设置",
+        name_esp = "名字透视",
+        highlight_esp = "人物高亮",
+        player_section = "🏃 人物增强",
+        speed_toggle = "移动加速",
+        speed_val = "加速值",
+        noclip_toggle = "穿墙模式",
+        fov_label = "📷 广角",
+        fov_slider = "广角度数",
+        hitbox_section = "📦 碰撞箱",
+        hitbox_toggle = "修改碰撞箱",
+        hitbox_mul = "碰撞倍数",
+        adv_warning = "⚠ 高级设置有封禁风险!",
+        fly_toggle = "飞行模式",
+        fly_up_key = "上升: E",
+        fly_down_key = "下降: Q",
+        fly_speed = "飞行速度",
+        adv_hitbox = "碰撞箱倍数",
+        adv_speed = "移动速度(无限制)",
+        adv_jump = "跳跃力度",
+        adv_radius = "自瞄范围",
+        close_adv = "关闭高级",
+        on = "开",
+        off = "关",
+    },
+    en = {
+        combat_title = "DS Gun Center",
+        minimize = "—",
+        restore = "⚡ Restore",
+        langBtn = "🌐 EN",
+        aim_section = "🎯 Aimbot",
+        aim_toggle = "Enable Aimbot",
+        part_head = "Target: Head",
+        part_body = "Target: Body",
+        obst_check = "Wall Check",
+        team_check = "Team Check",
+        smooth = "Smoothness",
+        radius = "Field Radius",
+        esp_section = "👁 ESP",
+        name_esp = "Name ESP",
+        highlight_esp = "Highlight",
+        player_section = "🏃 Movement",
+        speed_toggle = "Speed Boost",
+        speed_val = "Speed Value",
+        noclip_toggle = "No Clip",
+        fov_label = "📷 FOV",
+        fov_slider = "FOV",
+        hitbox_section = "📦 Hitbox",
+        hitbox_toggle = "Expand Hitboxes",
+        hitbox_mul = "Multiplier",
+        adv_warning = "⚠ ADVANCED SETTINGS - BAN RISK!",
+        fly_toggle = "Flight",
+        fly_up_key = "Fly Up: E",
+        fly_down_key = "Fly Down: Q",
+        fly_speed = "Fly Speed",
+        adv_hitbox = "Hitbox Mult.",
+        adv_speed = "Speed (Unlim.)",
+        adv_jump = "Jump Power",
+        adv_radius = "Aimbot Radius",
+        close_adv = "Close Advanced",
+        on = "ON",
+        off = "OFF",
+    }
+}
+local function CT(key) return combatL[lang] and combatL[lang][key] or key end
+
+local function updateCombatLang()
+    if not combatLoaded or not combatLangObjs then return end
+    for _, v in ipairs(combatLangObjs) do
+        if v.suffix then
+            local num = v.obj.Text:match(": (.+)$")
+            if num then v.obj.Text = CT(v.key)..": "..num end
+        else
+            v.obj.Text = CT(v.key)
+        end
+    end
+    for _, v in ipairs(combatToggleBtns) do
+        v.btn.Text = v.state and CT("on") or CT("off")
+    end
+end
+
+-- 卸载战斗脚本
+local function unloadCombatScript()
+    if not combatLoaded then return end
+    combatLoaded = false
+    for _, conn in ipairs(combatConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    combatConnections = {}
+    if combatGui then
+        combatGui:Destroy()
+        combatGui = nil
+    end
+    combatLangObjs = {}
+    combatToggleBtns = {}
+    -- 恢复FOV
+    Camera.FieldOfView = 70
+    -- 清理战斗ESP
+    for _, v in ipairs(Players:GetPlayers()) do
+        if v ~= p then
+            -- 触发原始ESP的resp来清理
+            resp(v)
+        end
+    end
+end
+
+-- 加载战斗脚本
+local function loadCombatScript()
+    if combatLoaded then return end
+    combatLoaded = true
+    
+    -- ===== 战斗脚本变量 =====
+    local aimbotOn = false
+    local aimPart = "Head"
+    local obstCheck = true
+    local teamCheck = true
+    local smoothVal = 0.3
+    local aimRadius = 150
+    local nameEsp = false
+    local highlightEsp = false
+    local speedOn = false
+    local speedVal = 30
+    local noclipOn = false
+    local fovVal = 70
+    local hitboxOn = false
+    local hitboxMul = 2
+    local flyOn = false
+    local flySpeed = 50
+    local advHitboxMul = 10
+    local advSpeed = 100
+    local advJumpPower = 50
+    local advRadius = 300
+    
+    local hlObjs, nameTags, origSizes, adornments = {}, {}, {}, {}
+    local flyBV
+    local flyKeys = {w=false,a=false,s=false,d=false,e=false,q=false}
+    
+    -- 战斗脚本UI辅助函数
+    local combatUIOrder = 0
+    local function CAddLabel(textKey)
+        local lbl = Instance.new("TextLabel", combatScroll)
+        lbl.Size = UDim2.new(1,-8,0,18)
+        lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = Color3.fromRGB(255,255,0)
+        lbl.Font = Enum.Font.SourceSansBold
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Text = "  "..CT(textKey)
+        lbl.LayoutOrder = combatUIOrder
+        combatUIOrder = combatUIOrder + 1
+        table.insert(combatLangObjs, {obj = lbl, key = textKey})
+    end
+    
+    local function CAddToggle(textKey, default, callback)
+        local f = Instance.new("Frame", combatScroll)
+        f.Size = UDim2.new(1,-8,0,30)
+        f.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        f.BorderSizePixel = 0
+        f.LayoutOrder = combatUIOrder
+        combatUIOrder = combatUIOrder + 1
+        local lb = Instance.new("TextLabel", f)
+        lb.Size = UDim2.new(0.6,0,1,0)
+        lb.Position = UDim2.new(0.05,0,0,0)
+        lb.BackgroundTransparency = 1
+        lb.TextColor3 = Color3.fromRGB(200,200,200)
+        lb.Font = Enum.Font.SourceSans
+        lb.TextSize = 13
+        lb.Text = CT(textKey)
+        table.insert(combatLangObjs, {obj = lb, key = textKey})
+        local btn = Instance.new("TextButton", f)
+        btn.Size = UDim2.new(0,44,0,20)
+        btn.Position = UDim2.new(0.75,0,0,5)
+        btn.BorderSizePixel = 0
+        btn.Text = ""
+        local state = default
+        local sLabel = Instance.new("TextLabel", btn)
+        sLabel.Size = UDim2.new(1,0,1,0)
+        sLabel.BackgroundTransparency = 1
+        sLabel.TextColor3 = Color3.new(1,1,1)
+        sLabel.Font = Enum.Font.SourceSansBold
+        sLabel.TextSize = 11
+        table.insert(combatToggleBtns, {btn = sLabel, state = state})
+        local function upd()
+            btn.BackgroundColor3 = state and Color3.fromRGB(40,200,40) or Color3.fromRGB(200,40,40)
+            sLabel.Text = state and CT("on") or CT("off")
+            if callback then callback(state) end
+        end
+        btn.MouseButton1Click:Connect(function() state = not state; upd() end)
+        upd()
+        return state
+    end
+    
+    local function CAddSlider(textKey, min, max, default, callback)
+        local f = Instance.new("Frame", combatScroll)
+        f.Size = UDim2.new(1,-8,0,45)
+        f.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        f.BorderSizePixel = 0
+        f.LayoutOrder = combatUIOrder
+        combatUIOrder = combatUIOrder + 1
+        local lb = Instance.new("TextLabel", f)
+        lb.Size = UDim2.new(0.4,0,0,20)
+        lb.Position = UDim2.new(0.05,0,0,3)
+        lb.BackgroundTransparency = 1
+        lb.TextColor3 = Color3.fromRGB(200,200,200)
+        lb.Font = Enum.Font.SourceSans
+        lb.TextSize = 12
+        lb.Text = CT(textKey)..": "..default
+        table.insert(combatLangObjs, {obj = lb, key = textKey, suffix = true})
+        local box = Instance.new("TextBox", f)
+        box.Size = UDim2.new(0.5,0,0,20)
+        box.Position = UDim2.new(0.5,0,0,22)
+        box.BackgroundColor3 = Color3.fromRGB(70,70,70)
+        box.TextColor3 = Color3.new(1,1,1)
+        box.Font = Enum.Font.SourceSans
+        box.TextSize = 12
+        box.Text = tostring(default)
+        box.FocusLost:Connect(function()
+            local n = tonumber(box.Text)
+            if n then n = math.clamp(n, min, max); box.Text = tostring(n); lb.Text = CT(textKey)..": "..n; if callback then callback(n) end
+            else box.Text = tostring(default) end
+        end)
+        return tonumber(box.Text) or default
+    end
+    
+    -- 战斗脚本功能函数
+    local function CGetEnemies()
+        local e = {}
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl ~= p and pl.Character and pl.Character:FindFirstChild("Humanoid") and pl.Character.Humanoid.Health > 0 then
+                if teamCheck and pl.Team and p.Team and pl.Team == p.Team then continue end
+                table.insert(e, pl.Character)
+            end
+        end
+        return e
+    end
+    
+    local function AimbotUpdate()
+        if not aimbotOn then return end
+        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        local closestTarget, minDist = nil, aimRadius + 1
+        for _, char in ipairs(CGetEnemies()) do
+            local part = char:FindFirstChild(aimPart)
+            if part then
+                local sp, onScreen = Camera:WorldToScreenPoint(part.Position)
+                if onScreen then
+                    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                    if d < minDist then
+                        if obstCheck then
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterDescendantsInstances = {p.Character, char}
+                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                            local ray = Workspace:Raycast(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000, rayParams)
+                            if ray and ray.Instance and not ray.Instance:IsDescendantOf(char) then continue end
+                        end
+                        minDist = d
+                        closestTarget = part.Position
+                    end
+                end
+            end
+        end
+        if closestTarget then
+            local goalCF = CFrame.new(Camera.CFrame.Position, closestTarget)
+            Camera.CFrame = Camera.CFrame:Lerp(goalCF, smoothVal)
+        end
+    end
+    
+    local function RefreshESP()
+        for _, v in pairs(hlObjs) do v:Destroy() end
+        for _, v in pairs(nameTags) do v:Destroy() end
+        hlObjs, nameTags = {}, {}
+        if not (nameEsp or highlightEsp) then return end
+        for _, char in ipairs(CGetEnemies()) do
+            local plr = Players:GetPlayerFromCharacter(char)
+            if plr then
+                if nameEsp then
+                    local bg = Instance.new("BillboardGui", char)
+                    bg.Adornee = char:WaitForChild("Head", 5)
+                    bg.Size = UDim2.new(0,100,0,30)
+                    bg.StudsOffset = Vector3.new(0,3,0)
+                    bg.AlwaysOnTop = true
+                    local l = Instance.new("TextLabel", bg)
+                    l.Size = UDim2.new(1,0,1,0)
+                    l.BackgroundTransparency = 1
+                    l.TextColor3 = Color3.new(1,1,1)
+                    l.TextStrokeTransparency = 0
+                    l.Font = Enum.Font.SourceSansBold
+                    l.TextSize = 14
+                    l.Text = plr.Name
+                    nameTags[plr] = bg
+                end
+                if highlightEsp then
+                    local hl = Instance.new("Highlight", combatGui)
+                    hl.FillColor = Color3.fromRGB(255,100,100)
+                    hl.OutlineColor = Color3.new(1,0,0)
+                    hl.FillTransparency = 0.4
+                    hl.OutlineTransparency = 0
+                    hl.Adornee = char
+                    hlObjs[plr] = hl
+                end
+            end
+        end
+    end
+    
+    local function UpdateHitboxes()for _, ads in pairs(adornments) do for _, a in ipairs(ads) do a:Destroy() end end
+        adornments = {}
+        for _, char in ipairs(CGetEnemies()) do
+            local plr = Players:GetPlayerFromCharacter(char)
+            if plr then
+                if not origSizes[plr] then origSizes[plr] = {} end
+                if not adornments[plr] then adornments[plr] = {} end
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        if not origSizes[plr][part] then origSizes[plr][part] = part.Size end
+                        local currentMul = hitboxOn and (hitboxMul or advHitboxMul) or 1
+                        local ns = origSizes[plr][part] * currentMul
+                        part.Size = ns
+                        if hitboxOn then
+                            local ad = Instance.new("BoxHandleAdornment", combatGui)
+                            ad.Adornee = part
+                            ad.Size = ns
+                            ad.Transparency = 0.4
+                            ad.Color3 = Color3.new(0,1,0)
+                            ad.AlwaysOnTop = true
+                            ad.ZIndex = 1
+                            table.insert(adornments[plr], ad)
+                        end
+                    end
+                end
+            end
+        end
+        if not hitboxOn then
+            for plr, parts in pairs(origSizes) do
+                for part, sz in pairs(parts) do
+                    if part and part.Parent then part.Size = sz end
+                end
+            end
+            origSizes = {}
+        end
+    end
+    
+    local function ApplySpeed()
+        local hum = p.Character and p.Character:FindFirstChild("Humanoid")
+        if hum then hum.WalkSpeed = speedOn and (speedVal or advSpeed) or 16 end
+    end
+    
+    local function SetupFly()
+        if flyOn then
+            local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                if p.Character:FindFirstChild("Humanoid") then p.Character.Humanoid.PlatformStand = true end
+                if not flyBV then
+                    flyBV = Instance.new("BodyVelocity", root)
+                    flyBV.MaxForce = Vector3.new(1e5,1e5,1e5)
+                    flyBV.Velocity = Vector3.zero
+                end
+            end
+        else
+            if flyBV then flyBV:Destroy(); flyBV = nil end
+            if p.Character and p.Character:FindFirstChild("Humanoid") then p.Character.Humanoid.PlatformStand = false end
+        end
+    end
+    
+    local function FlyUpdate()
+        if not flyOn or not flyBV then return end
+        local vel = Vector3.zero
+        local cf = Camera.CFrame
+        if flyKeys.w then vel = vel + cf.LookVector * flySpeed end
+        if flyKeys.s then vel = vel - cf.LookVector * flySpeed end
+        if flyKeys.a then vel = vel - cf.RightVector * flySpeed end
+        if flyKeys.d then vel = vel + cf.RightVector * flySpeed end
+        if flyKeys.e then vel = vel + Vector3.new(0,flySpeed,0) end
+        if flyKeys.q then vel = vel - Vector3.new(0,flySpeed,0) end
+        flyBV.Velocity = vel
+    end
+    
+    -- 按键监听
+    local keyBeganConn = U.InputBegan:Connect(function(inp)
+        if not flyOn then return end
+        if inp.KeyCode == Enum.KeyCode.W then flyKeys.w = true
+        elseif inp.KeyCode == Enum.KeyCode.A then flyKeys.a = true
+        elseif inp.KeyCode == Enum.KeyCode.S then flyKeys.s = true
+        elseif inp.KeyCode == Enum.KeyCode.D then flyKeys.d = true
+        elseif inp.KeyCode == Enum.KeyCode.E then flyKeys.e = true
+        elseif inp.KeyCode == Enum.KeyCode.Q then flyKeys.q = true end
+    end)
+    table.insert(combatConnections, keyBeganConn)
+    
+    local keyEndConn = U.InputEnded:Connect(function(inp)
+        if inp.KeyCode == Enum.KeyCode.W then flyKeys.w = false
+        elseif inp.KeyCode == Enum.KeyCode.A then flyKeys.a = false
+        elseif inp.KeyCode == Enum.KeyCode.S then flyKeys.s = false
+        elseif inp.KeyCode == Enum.KeyCode.D then flyKeys.d = false
+        elseif inp.KeyCode == Enum.KeyCode.E then flyKeys.e = false
+        elseif inp.KeyCode == Enum.KeyCode.Q then flyKeys.q = false end
+    end)
+    table.insert(combatConnections, keyEndConn)
+    
+    -- 心跳
+    local heartbeatConn = R.Heartbeat:Connect(function()
+        AimbotUpdate()
+        if noclipOn and p.Character then
+            for _, part in ipairs(p.Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end
+        if flyOn then FlyUpdate() end
+    end)
+    table.insert(combatConnections, heartbeatConn)
+    
+    -- 角色事件
+    local charAddedConn = p.CharacterAdded:Connect(function()
+        ApplySpeed()
+        RefreshESP()
+        UpdateHitboxes()
+        if flyOn then SetupFly() end
+    end)
+    table.insert(combatConnections, charAddedConn)
+    
+    local playerAddedConn = Players.PlayerAdded:Connect(function(pl)
+        pl.CharacterAdded:Connect(function() wait(0.3); RefreshESP(); UpdateHitboxes() end)
+        if pl ~= p then wait(0.3); RefreshESP(); UpdateHitboxes() end
+    end)
+    table.insert(combatConnections, playerAddedConn)
+    
+    local playerRemovingConn = Players.PlayerRemoving:Connect(function(pl)
+        if hlObjs[pl] then hlObjs[pl]:Destroy(); hlObjs[pl] = nil end
+        if nameTags[pl] then nameTags[pl]:Destroy(); nameTags[pl] = nil end
+        if adornments[pl] then for _, a in ipairs(adornments[pl]) do a:Destroy() end; adornments[pl] = nil end
+        if origSizes[pl] then origSizes[pl] = nil end
+    end)
+    table.insert(combatConnections, playerRemovingConn)
+    
+    -- ===== 创建战斗GUI =====
+    combatGui = Instance.new("ScreenGui", g)
+    combatGui.Name = "DSCombatModule"
+    
+    local CombatMain = Instance.new("Frame", combatGui)
+    CombatMain.Size = UDim2.new(0, 280, 0, 370)
+    CombatMain.Position = UDim2.new(0.5, -140, 0.5, -185)
+    CombatMain.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    CombatMain.BorderSizePixel = 0
+    CombatMain.ClipsDescendants = true
+    Instance.new("UIGradient", CombatMain).Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40,40,40)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(20,20,20))
+    }
+    
+    -- 标题栏
+    local CombatTitleBar = Instance.new("Frame", CombatMain)
+    CombatTitleBar.Size = UDim2.new(1,0,0,30)
+    CombatTitleBar.BackgroundColor3 = Color3.new(0,0,0)
+    CombatTitleBar.BackgroundTransparency = 0.5
+    
+    local CombatTitle = Instance.new("TextButton", CombatTitleBar)
+    CombatTitle.Size = UDim2.new(0.4,0,1,0)
+    CombatTitle.Position = UDim2.new(0.05,0,0,0)
+    CombatTitle.BackgroundTransparency = 1
+    CombatTitle.TextColor3 = Color3.new(1,1,1)
+    CombatTitle.Font = Enum.Font.GothamBold
+    CombatTitle.TextSize = 14
+    CombatTitle.Text = CT("combat_title")
+    table.insert(combatLangObjs, {obj = CombatTitle, key = "combat_title"})
+    
+    -- 关闭按钮
+    local CombatCloseBtn = Instance.new("TextButton", CombatTitleBar)
+    CombatCloseBtn.Size = UDim2.new(0,30,0,25)
+    CombatCloseBtn.Position = UDim2.new(0.85,0,0,3)
+    CombatCloseBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+    CombatCloseBtn.TextColor3 = Color3.new(1,1,1)
+    CombatCloseBtn.Font = Enum.Font.SourceSansBold
+    CombatCloseBtn.TextSize = 18
+    CombatCloseBtn.Text = "X"
+    CombatCloseBtn.MouseButton1Click:Connect(function() unloadCombatScript() end)
+    
+    -- 高级面板按钮(点击标题10次)
+    local AdvPanel = Instance.new("Frame", combatGui)
+    AdvPanel.Size = UDim2.new(0,260,0,220)
+    AdvPanel.Position = UDim2.new(0.5,-130,0.5,-110)
+    AdvPanel.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    AdvPanel.BorderSizePixel = 0
+    AdvPanel.Visible = false
+    AdvPanel.ZIndex = 500
+    Instance.new("UIGradient", AdvPanel).Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40,0,0)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(20,0,0))
+    }
+    
+    local AdvTitle = Instance.new("TextLabel", AdvPanel)
+    AdvTitle.Size = UDim2.new(1,0,0,24)
+    AdvTitle.BackgroundColor3 = Color3.new(0,0,0)
+    AdvTitle.TextColor3 = Color3.new(1,0,0)
+    AdvTitle.Font = Enum.Font.GothamBold
+    AdvTitle.TextSize = 13
+    AdvTitle.Text = CT("adv_warning")
+    AdvTitle.ZIndex = 2
+    table.insert(combatLangObjs, {obj = AdvTitle, key = "adv_warning"})
+    
+    local AdvInner = Instance.new("ScrollingFrame", AdvPanel)
+    AdvInner.Size = UDim2.new(1,-4,1,-50)
+    AdvInner.Position = UDim2.new(0,2,0,26)
+    AdvInner.BackgroundTransparency = 1
+    AdvInner.BorderSizePixel = 0
+    AdvInner.ScrollBarThickness = 3
+    AdvInner.CanvasSize = UDim2.new(0,0,0,0)
+    AdvInner.ZIndex = 2
+    local AdvList = Instance.new("UIListLayout", AdvInner)
+    AdvList.Padding = UDim.new(0,3)
+    
+    local closeAdvBtn = Instance.new("TextButton", AdvPanel)
+    closeAdvBtn.Size = UDim2.new(0,80,0,20)
+    closeAdvBtn.Position = UDim2.new(0.5,-40,1,-24)
+    closeAdvBtn.BackgroundColor3 = Color3.fromRGB(150,0,0)
+    closeAdvBtn.TextColor3 = Color3.new(1,1,1)
+    closeAdvBtn.Font = Enum.Font.SourceSansBold
+    closeAdvBtn.TextSize = 12
+    closeAdvBtn.Text = CT("close_adv")
+    closeAdvBtn.ZIndex = 3
+    table.insert(combatLangObjs, {obj = closeAdvBtn, key = "close_adv"})
+    closeAdvBtn.MouseButton1Click:Connect(function() AdvPanel.Visible = false end)
+    
+    local titleClickCount = 0
+    CombatTitle.MouseButton1Click:Connect(function()
+        titleClickCount = titleClickCount + 1
+        if titleClickCount >= 10 then
+            titleClickCount = 0
+            AdvPanel.Visible = true
+        end
+    end)
+    
+    -- 高级面板元素
+    local advOrder = 0
+    local function CAddAdvToggle(textKey, default, callback)
+        local f = Instance.new("Frame", AdvInner)
+        f.Size = UDim2.new(1,-8,0,28)
+        f.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        f.BorderSizePixel = 0
+        f.LayoutOrder = advOrder; advOrder = advOrder + 1
+        local lb = Instance.new("TextLabel", f)
+        lb.Size = UDim2.new(0.6,0,1,0)
+        lb.Position = UDim2.new(0.05,0,0,0)
+        lb.BackgroundTransparency = 1
+        lb.TextColor3 = Color3.fromRGB(200,200,200)
+        lb.Font = Enum.Font.SourceSans
+        lb.TextSize = 13
+        lb.Text = CT(textKey)
+        table.insert(combatLangObjs, {obj = lb, key = textKey})
+        local btn = Instance.new("TextButton", f)
+        btn.Size = UDim2.new(0,44,0,20)
+        btn.Position = UDim2.new(0.75,0,0,4)
+        btn.BorderSizePixel = 0
+        btn.Text = ""
+        local state = default
+        local sLabel = Instance.new("TextLabel", btn)
+        sLabel.Size = UDim2.new(1,0,1,0)
+        sLabel.BackgroundTransparency = 1
+        sLabel.TextColor3 = Color3.new(1,1,1)
+        sLabel.Font = Enum.Font.SourceSansBold
+        sLabel.TextSize = 11
+        table.insert(combatToggleBtns, {btn = sLabel, state = state})
+        local function upd()
+            btn.BackgroundColor3 = state and Color3.fromRGB(40,200,40) or Color3.fromRGB(200,40,40)
+            sLabel.Text = state and CT("on") or CT("off")
+            if callback then callback(state) end
+        end
+        btn.MouseButton1Click:Connect(function() state = not state; upd() end)
+        upd()
+    end
+    
+    local function CAddAdvSlider(textKey, min, max, default, callback)
+        local f = Instance.new("Frame", AdvInner)
+        f.Size = UDim2.new(1,-8,0,42)
+        f.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        f.BorderSizePixel = 0
+        f.LayoutOrder = advOrder; advOrder = advOrder + 1
+        local lb = Instance.new("TextLabel", f)
+        lb.Size = UDim2.new(0.4,0,0,18)
+        lb.Position = UDim2.new(0.05,0,0,2)
+        lb.BackgroundTransparency = 1
+        lb.TextColor3 = Color3.fromRGB(200,200,200)
+        lb.Font = Enum.Font.SourceSans
+        lb.TextSize = 12
+        lb.Text = CT(textKey)..": "..default
+        table.insert(combatLangObjs, {obj = lb, key = textKey, suffix = true})
+        local box = Instance.new("TextBox", f)
+        box.Size = UDim2.new(0.5,0,0,18)
+        box.Position = UDim2.new(0.5,0,0,20)
+        box.BackgroundColor3 = Color3.fromRGB(70,70,70)
+        box.TextColor3 = Color3.new(1,1,1)
+        box.Font = Enum.Font.SourceSans
+        box.TextSize = 12
+        box.Text = tostring(default)
+        box.FocusLost:Connect(function()
+            local n = tonumber(box.Text)
+            if n then n = math.clamp(n, min, max); box.Text = tostring(n); lb.Text = CT(textKey)..": "..n; if callback then callback(n) end
+            else box.Text = tostring(default) end
+        end)
+    end
+    
+    -- 高级面板内容
+    CAddAdvToggle("fly_toggle", false, function(v) flyOn = v; SetupFly() end)
+    CAddAdvSlider("fly_speed", 10, 500, 50, function(v) flySpeed = v end)
+    CAddAdvSlider("adv_hitbox", 1, 100, 10, function(v) advHitboxMul = v; UpdateHitboxes() end)
+    CAddAdvSlider("adv_speed", 1, 1000, 100, function(v) advSpeed = v; ApplySpeed() end)
+    CAddAdvSlider("adv_jump", 0, 500, 50, function(v) advJumpPower = v; if p.Character and p.Character:FindFirstChild("Humanoid") then p.Character.Humanoid.JumpPower = v end end)
+    CAddAdvSlider("adv_radius", 50, 2000, 300, function(v) advRadius = v end)
+    
+    -- 可滚动内容
+    combatScroll = Instance.new("ScrollingFrame", CombatMain)
+    combatScroll.Size = UDim2.new(1,-4,1,-34)
+    combatScroll.Position = UDim2.new(0,2,0,32)
+    combatScroll.BackgroundTransparency = 1
+    combatScroll.BorderSizePixel = 0
+    combatScroll.ScrollBarThickness = 3
+    combatScroll.CanvasSize = UDim2.new(0,0,0,0)
+    local combatList = Instance.new("UIListLayout", combatScroll)
+    combatList.Padding = UDim.new(0,3)
+    
+    -- 构建UI
+    CAddLabel("aim_section")
+    local partBtn = Instance.new("TextButton", combatScroll)
+    partBtn.Size = UDim2.new(1,-8,0,26)
+    partBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+    partBtn.TextColor3 = Color3.new(1,1,1)
+    partBtn.Font = Enum.Font.SourceSans
+    partBtn.TextSize = 13
+    partBtn.LayoutOrder = combatUIOrder; combatUIOrder = combatUIOrder + 1
+    partBtn.Text = CT("part_head")
+    table.insert(combatLangObjs, {obj = partBtn, key = "part_head"})
+    local origPartBtn = partBtn
+    partBtn.MouseButton1Click:Connect(function()
+        aimPart = aimPart == "Head" and "HumanoidRootPart" or "Head"
+        partBtn.Text = aimPart == "Head" and CT("part_head") or CT("part_body")
+        -- 存储当前显示的状态用于语言切换
+        partBtn._isHead = aimPart == "Head"
+    end)
+    partBtn._isHead = true
+    
+    CAddToggle("aim_toggle", false, function(v) aimbotOn = v end)
+    CAddToggle("obst_check", true, function(v) obstCheck = v end)
+    CAddToggle("team_check", true, function(v) teamCheck = v end)
+    CAddSlider("smooth", 0.1, 1, 0.3, function(v) smoothVal = v end)
+    CAddSlider("radius", 50, 400, 150, function(v) aimRadius = v end)
+    
+    CAddLabel("esp_section")
+    CAddToggle("name_esp", false, function(v) nameEsp = v; RefreshESP() end)
+    CAddToggle("highlight_esp", false, function(v) highlightEsp = v; RefreshESP() end)
+    
+    CAddLabel("player_section")
+    CAddToggle("speed_toggle", false, function(v) speedOn = v; ApplySpeed() end)
+    CAddSlider("speed_val", 20, 200, 30, function(v) speedVal = v; ApplySpeed() end)
+    CAddToggle("noclip_toggle", false, function(v) noclipOn = v end)
+    
+    CAddLabel("fov_label")
+    CAddSlider("fov_slider", 30, 150, 70, function(v) fovVal = v; Camera.FieldOfView = v end)
+    
+    CAddLabel("hitbox_section")
+    CAddToggle("hitbox_toggle", false, function(v) hitboxOn = v; UpdateHitboxes() end)
+    CAddSlider("hitbox_mul", 1.1, 5, 2, function(v) hitboxMul = v; UpdateHitboxes() end)
+    
+    -- 更新滚动大小
+    combatScroll.CanvasSize = UDim2.new(0,0,0, combatList.AbsoluteContentSize.Y + 10)
+    AdvInner.CanvasSize = UDim2.new(0,0,0, AdvList.AbsoluteContentSize.Y + 10)
+    
+    -- 初始化
+    ApplySpeed()
+    Camera.FieldOfView = fovVal
+    if p.Character and p.Character:FindFirstChild("Humanoid") then
+        p.Character.Humanoid.JumpPower = advJumpPower
+    end
+    RefreshESP()
+end
+
+-- 战斗模块分类UI
+local combatCat = categoryRow("combat_cat", 5)
+local combatBtnRow = function()
+    local r = Instance.new("Frame", combatCat)
+    r.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    r.Size = UDim2.new(1, -20, 0, 44)
+    r.LayoutOrder = 1
+    r.BorderSizePixel = 0
+    Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
+    local btn = Instance.new("TextButton", r)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 14
+    btn.Size = UDim2.new(1, -16, 0, 34)
+    btn.Position = UDim2.new(0, 8, 0.5, -17)
+    btn.BorderSizePixel = 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    reg(btn, "combat_load")
+    local loaded = false
+    btn.MouseButton1Click:Connect(function()
+        if combatLoaded then
+            unloadCombatScript()
+            btn.Text = T("combat_load")
+            btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+        else
+            loadCombatScript()
+            btn.Text = T("combat_unload")
+            btn.BackgroundColor3 = Color3.fromRGB(40, 130, 40)
+        end
+        playSound()
+    end)
+end
+combatBtnRow()
 
 -- Infinite jump
 U.JumpRequest:Connect(function()
@@ -420,7 +1163,7 @@ R.Heartbeat:Connect(function(dt)
         if s.walkspeed then h.WalkSpeed = math.max(1, s.walkspeedValue) else h.WalkSpeed = dws end
         if s.speedMultiplier then h.WalkSpeed = h.WalkSpeed * s.speedMultiplierValue end
     else lh = nil end
-    if s.gravity then workspace.Gravity = 196.2 * s.gravityValue else workspace.Gravity = 196.2 end
+    if s.gravity then Workspace.Gravity = 196.2 * s.gravityValue else Workspace.Gravity = 196.2 end
     if c and s.noclip then for _, v in ipairs(c:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end
     if flyActive and r and h then
         h.PlatformStand = true
@@ -431,11 +1174,11 @@ R.Heartbeat:Connect(function(dt)
         r.CFrame = r.CFrame + mv; r.Velocity = Vector3.zero; r.RotVelocity = Vector3.zero
     end
     if s.esp and s.espLine and r then
-        local cam = workspace.CurrentCamera
+        local cam = Workspace.CurrentCamera
         if cam then
             local myPos, onScreen = cam:WorldToViewportPoint(r.Position)
             if not onScreen then myPos = nil end
-            for _, v in ipairs(game:GetService("Players"):GetPlayers()) do
+            for _, v in ipairs(Players:GetPlayers()) do
                 if v ~= p and v.Character then
                     local tr = v.Character:FindFirstChild("HumanoidRootPart")
                     if tr then
@@ -449,5 +1192,5 @@ R.Heartbeat:Connect(function(dt)
                 end
             end
         end
-    else for k, line in pairs(espLines) do line:Remove(); espLines[k] = nil end end
+    else for k, line in pairs(espLines) do pcall(function() line:Remove() end); espLines[k] = nil end end
 end)
