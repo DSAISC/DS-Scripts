@@ -974,7 +974,8 @@ R.Heartbeat:Connect(function(dt)
             for _, v in ipairs(Players:GetPlayers()) do
                 if v ~= p and v.Character then
                     local tr = v.Character:FindFirstChild("HumanoidRootPart")
-                    if tr thenlocal tpos, vis = cam:WorldToViewportPoint(tr.Position)
+                    if tr then
+                        local tpos, vis = cam:WorldToViewportPoint(tr.Position)
                         if vis and myPos then
                             local line = espLines[v]
                             if not line then line = Drawing.new("Line") line.Thickness = 2 line.Color = Color3.fromRGB(255, 0, 0) espLines[v] = line end
