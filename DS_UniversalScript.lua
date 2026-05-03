@@ -347,7 +347,8 @@ local function showAirWalk()
     amin.MouseButton1Click:Connect(function() airW.Visible = false; airRest.Visible = true end) acls.MouseButton1Click:Connect(function() destroyAirWalk() end) airRest.MouseButton1Click:Connect(function() airW.Visible = true; airRest.Visible = false end)
 end
 
--- 分类折叠local function categoryRow(titleKey, ord)
+-- 分类折叠
+local function categoryRow(titleKey, ord)
     local r = Instance.new("Frame", m) r.BackgroundColor3 = Color3.fromRGB(35, 35, 35) r.Size = UDim2.new(1, -20, 0, 0) r.AutomaticSize = Enum.AutomaticSize.Y r.LayoutOrder = ord r.BorderSizePixel = 0
     Instance.new("UICorner", r).CornerRadius = UDim.new(0, 8)
     local rl = Instance.new("UIListLayout", r) rl.Padding = UDim.new(0, 4) rl.HorizontalAlignment = Enum.HorizontalAlignment.Center rl.SortOrder = Enum.SortOrder.LayoutOrder
