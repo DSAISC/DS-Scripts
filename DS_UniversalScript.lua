@@ -12,13 +12,19 @@ local UD=UDim2
 
 if not _G.NeoBetaConfig then _G.NeoBetaConfig={LoadScreenEnabled=true} end
 
-local C={Void=Color3.fromRGB(4,7,14),Bg=Color3.fromRGB(11,16,28),Panel=Color3.fromRGB(16,23,40),Panel2=Color3.fromRGB(24,33,56),Line=Color3.fromRGB(38,56,88),Cyan=Color3.fromRGB(0,229,255),Purple=Color3.fromRGB(123,97,255),Green=Color3.fromRGB(0,255,170),Red=Color3.fromRGB(255,70,90),Text=Color3.fromRGB(222,240,255),Dim=Color3.fromRGB(110,140,180)}
+local C={Void=Color3.fromRGB(4,7,14),Bg=Color3.fromRGB(11,16,28),Panel=Color3.fromRGB(16,23,40),Panel2=Color3.fromRGB(24,33,56),Line=Color3.fromRGB(38,56,88),Cyan=Color3.fromRGB(0,229,255),Purple=Color3.fromRGB(123,97,255),Green=Color3.fromRGB(0,255,170),Red=Color3.fromRGB(255,70,90),Text=Color3.fromRGB(222,240,255),Dim=Color3.fromRGB(110,140,180),BarBg=Color3.fromRGB(30,30,36)}
 
-local State={NoclipEnabled=false,InfiniteJumpEnabled=false,ESPHighlightEnabled=false,ESPNameEnabled=false,ESPHealthEnabled=false,InstantInteractEnabled=false,PromptESPEnabled=false,RemoveFogEnabled=false,NightVisionEnabled=false,CustomSpeed=16,SpeedMultiplier=1,CustomJump=50,LoadScreenEnabled=_G.NeoBetaConfig.LoadScreenEnabled}
+local BASE_JUMP=50
+local baseSpeed=16
+local lastSetSpeed=16
+local speedToggleDesc=nil
+
+local State={NoclipEnabled=false,InfiniteJumpEnabled=false,SpeedEnabled=false,JumpEnabled=false,ESPHighlightEnabled=false,ESPNameEnabled=false,ESPHealthEnabled=false,InstantInteractEnabled=false,PromptESPEnabled=false,RemoveFogEnabled=false,NightVisionEnabled=false,HitboxEnabled=false,SpeedMultiplier=1,CustomJump=50,HitboxSize=10,HitboxTransparency=0.7,HitboxColor=Color3.fromRGB(255,215,0),LoadScreenEnabled=_G.NeoBetaConfig.LoadScreenEnabled}
 
 local ESPObjects={}
 local PromptESPObjects={}
-local infJumpConnection,instantInteractConn,promptESPConn
+local infJumpConnection,instantInteractConn,promptESPConn,hitboxLoop,noclipLoop
+local HitboxOriginal=setmetatable({},{__mode="k"})
 local SCRIPT_START_TIME=tick()
 
 local function new(c,p) local i=Instance.new(c);local pt;for k,v in pairs(p or {}) do if k=="Parent" then pt=v else i[k]=v end end;if pt then i.Parent=pt end;return i end
@@ -56,12 +62,35 @@ end
 
 local function notify(title,text) pcall(function() StarterGui:SetCore("SendNotification",{Title=title,Text=text,Duration=4}) end) end
 local function getCharacter() local char=LP.Character;if not char then return nil,nil end;return char,char:FindFirstChildOfClass("Humanoid") end
+local function updateBaseSpeedLabel() if speedToggleDesc and speedToggleDesc.Parent then speedToggleDesc.Text="原始移速: "..tostring(math.floor(baseSpeed+0.5)) end end
 
 local function setNoclip(enabled)
     State.NoclipEnabled=enabled
+    if noclipLoop then noclipLoop:Disconnect();noclipLoop=nil end
     local char=LP.Character
-    if not char then return end
-    for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=not enabled end end
+    if not enabled then
+        if char then
+            for _,p in ipairs(char:GetDescendants()) do
+                if p:IsA("BasePart") and p.Name~="HumanoidRootPart" then
+                    p.CanCollide=true
+                end
+            end
+        end
+        return
+    end
+    if char then
+        for _,p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide=false end
+        end
+    end
+    noclipLoop=RunService.Heartbeat:Connect(function()
+        if not State.NoclipEnabled then return end
+        local c=LP.Character
+        if not c then return end
+        for _,p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide=false end
+        end
+    end)
 end
 
 local function setInfiniteJump(enabled)
@@ -70,10 +99,118 @@ local function setInfiniteJump(enabled)
     if enabled then infJumpConnection=UserInputService.JumpRequest:Connect(function() local _,hum=getCharacter();if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end) end
 end
 
-local function applySpeed() local _,hum=getCharacter();if hum then hum.WalkSpeed=State.CustomSpeed*State.SpeedMultiplier end end
-local function setSpeed(v) State.CustomSpeed=v;applySpeed() end
-local function setSpeedMultiplier(m) State.SpeedMultiplier=m;applySpeed() end
-local function setJump(v) State.CustomJump=v;local _,hum=getCharacter();if hum then hum.UseJumpPower=true;hum.JumpPower=v end end
+local function applyJump()
+    local _,hum=getCharacter()
+    if not hum then return end
+    hum.UseJumpPower=true
+    hum.JumpPower=State.JumpEnabled and State.CustomJump or BASE_JUMP
+end
+
+local function setJump(v) State.CustomJump=v;applyJump() end
+local function setJumpEnabled(v) State.JumpEnabled=v;applyJump() end
+
+RunService.Heartbeat:Connect(function(dt)
+    local char,hum=getCharacter()
+    if not hum then return end
+    if not State.SpeedEnabled then
+        local cur=hum.WalkSpeed
+        if math.abs(cur-lastSetSpeed)>0.01 then
+            baseSpeed=cur;lastSetSpeed=cur;updateBaseSpeedLabel()
+        end
+        return
+    end
+    local cur=hum.WalkSpeed
+    if math.abs(cur-lastSetSpeed)>0.01 then
+        baseSpeed=cur;updateBaseSpeedLabel()
+    end
+    hum.WalkSpeed=baseSpeed
+    lastSetSpeed=baseSpeed
+    local hrp=char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local extra=baseSpeed*State.SpeedMultiplier-baseSpeed
+    if extra<=0 then return end
+    local dir=hum.MoveDirection
+    if dir.Magnitude>0.01 then
+        local delta=dir.Unit*extra*dt
+        hrp.CFrame=hrp.CFrame+delta
+        if CAM then CAM.CFrame=CAM.CFrame+delta end
+    end
+end)
+
+local function saveHitboxOriginal(char)
+    if HitboxOriginal[char] then return end
+    local head=char:FindFirstChild("Head")
+    local root=char:FindFirstChild("HumanoidRootPart")
+    HitboxOriginal[char]={
+        head=head and {Size=head.Size,Transparency=head.Transparency,CanCollide=head.CanCollide,Material=head.Material,Color=head.Color} or nil,
+        root=root and {Size=root.Size,Transparency=root.Transparency,CanCollide=root.CanCollide,Material=root.Material,Color=root.Color} or nil,
+    }
+end
+
+local function applyHitboxToChar(char)
+    if not char then return end
+    local hum=char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health<=0 then return end
+    saveHitboxOriginal(char)
+    local head=char:FindFirstChild("Head")
+    local root=char:FindFirstChild("HumanoidRootPart")
+    local sz=Vector3.new(State.HitboxSize,State.HitboxSize,State.HitboxSize)
+    if root then
+        root.Size=sz;root.Transparency=State.HitboxTransparency
+        root.Color=State.HitboxColor;root.Material=Enum.Material.Neon;root.CanCollide=false
+    end
+    if head then
+        head.Size=sz;head.Transparency=State.HitboxTransparency
+        head.Color=State.HitboxColor;head.Material=Enum.Material.Neon;head.CanCollide=false
+    end
+end
+
+local function resetHitboxChar(char)
+    local data=HitboxOriginal[char]
+    if not data then return end
+    local head=char:FindFirstChild("Head")
+    local root=char:FindFirstChild("HumanoidRootPart")
+    if head and data.head then
+        head.Size=data.head.Size;head.Transparency=data.head.Transparency
+        head.CanCollide=data.head.CanCollide;head.Material=data.head.Material;head.Color=data.head.Color
+    end
+    if root and data.root then
+        root.Size=data.root.Size;root.Transparency=data.root.Transparency
+        root.CanCollide=data.root.CanCollide;root.Material=data.root.Material;root.Color=data.root.Color
+    end
+    HitboxOriginal[char]=nil
+end
+
+local function stopHitbox()
+    if hitboxLoop then hitboxLoop:Disconnect();hitboxLoop=nil end
+    for char,_ in pairs(HitboxOriginal) do pcall(resetHitboxChar,char) end
+end
+
+local function setHitboxEnabled(enabled)
+    State.HitboxEnabled=enabled
+    stopHitbox()
+    if not enabled then return end
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP and p.Character then applyHitboxToChar(p.Character) end
+    end
+    hitboxLoop=RunService.RenderStepped:Connect(function()
+        if not State.HitboxEnabled then return end
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p~=LP and p.Character then applyHitboxToChar(p.Character) end
+        end
+    end)
+end
+
+local function refreshHitbox()
+    if not State.HitboxEnabled then return end
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP and p.Character then applyHitboxToChar(p.Character) end
+    end
+end
+
+local function setHitboxSize(v) State.HitboxSize=v;refreshHitbox() end
+local function setHitboxTransparency(v) State.HitboxTransparency=v;refreshHitbox() end
+local function setHitboxColor(c) State.HitboxColor=c;refreshHitbox() end
 
 local function setInstantInteract(enabled)
     State.InstantInteractEnabled=enabled
@@ -92,7 +229,13 @@ local function runExternalScript(url,name)
     if not ok then notify(name,"脚本加载失败: "..tostring(err)) end
 end
 
-local function clearPlayerESP(player) local d=ESPObjects[player];if not d then return end;if d.highlight then d.highlight:Destroy() end;if d.billboard then d.billboard:Destroy() end;ESPObjects[player]=nil end
+local function clearPlayerESP(player)
+    local d=ESPObjects[player]
+    if not d then return end
+    if d.highlight then d.highlight:Destroy() end
+    if d.billboard then d.billboard:Destroy() end
+    ESPObjects[player]=nil
+end
 
 local function createPlayerESP(player)
     if player==LP then return end
@@ -111,14 +254,29 @@ local function createPlayerESP(player)
         local head=char:FindFirstChild("Head")
         if head then
             local bg=Instance.new("BillboardGui")
-            bg.Adornee=head;bg.Size=UDim2.new(0,200,0,50);bg.StudsOffset=Vector3.new(0,3,0)
+            bg.Adornee=head;bg.Size=UDim2.new(0,110,0,30);bg.StudsOffset=Vector3.new(0,2.2,0)
             bg.AlwaysOnTop=true;bg.Parent=head
-            local lbl=Instance.new("TextLabel")
-            lbl.Size=UDim2.new(1,0,1,0);lbl.BackgroundTransparency=1
-            lbl.TextColor3=Color3.fromRGB(255,255,255);lbl.TextStrokeTransparency=0
-            lbl.TextStrokeColor3=Color3.fromRGB(0,0,0);lbl.Font=Enum.Font.SourceSansBold
-            lbl.TextSize=16;lbl.Parent=bg
-            d.billboard=bg;d.label=lbl
+            if State.ESPNameEnabled then
+                local nameLbl=Instance.new("TextLabel")
+                nameLbl.Size=UDim2.new(1,0,0,12)
+                nameLbl.BackgroundTransparency=1
+                nameLbl.TextColor3=Color3.fromRGB(255,255,255);nameLbl.TextStrokeTransparency=0
+                nameLbl.TextStrokeColor3=Color3.fromRGB(0,0,0);nameLbl.Font=Enum.Font.SourceSansBold
+                nameLbl.TextSize=12;nameLbl.Text=player.Name;nameLbl.Parent=bg
+            end
+            if State.ESPHealthEnabled then
+                local barBg=Instance.new("Frame")
+                barBg.Size=UDim2.new(1,0,0,5);barBg.Position=UDim2.new(0,0,0,State.ESPNameEnabled and 14 or 10)
+                barBg.BackgroundColor3=C.BarBg;barBg.BorderSizePixel=0;barBg.Parent=bg
+                corner(barBg,2)
+                local bgStroke=Instance.new("UIStroke");bgStroke.Color=Color3.fromRGB(0,0,0);bgStroke.Thickness=1;bgStroke.Transparency=0.3;bgStroke.Parent=barBg
+                local fill=Instance.new("Frame")
+                fill.Size=UDim2.new(1,0,1,0);fill.BackgroundColor3=Color3.fromRGB(0,255,100)
+                fill.BorderSizePixel=0;fill.Parent=barBg
+                corner(fill,2)
+                d.barFill=fill
+            end
+            d.billboard=bg
         end
     end
     ESPObjects[player]=d
@@ -126,20 +284,32 @@ end
 
 local function updateESPLabels()
     for player,d in pairs(ESPObjects) do
-        if d.label and d.label.Parent then
-            local parts={}
-            if State.ESPNameEnabled then table.insert(parts,player.Name) end
-            if State.ESPHealthEnabled then
-                local char=player.Character
-                if char then local hum=char:FindFirstChildOfClass("Humanoid");if hum then table.insert(parts,string.format("❤ %d/%d",math.floor(hum.Health),math.floor(hum.MaxHealth))) end end
+        if d.barFill and d.barFill.Parent then
+            local char=player.Character
+            if char then
+                local hum=char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.MaxHealth>0 then
+                    local pct=math.clamp(hum.Health/hum.MaxHealth,0,1)
+                    d.barFill.Size=UDim2.new(pct,0,1,0)
+                    if pct>0.6 then d.barFill.BackgroundColor3=Color3.fromRGB(0,255,100)
+                    elseif pct>0.3 then d.barFill.BackgroundColor3=Color3.fromRGB(255,200,0)
+                    else d.barFill.BackgroundColor3=Color3.fromRGB(255,60,60) end
+                end
             end
-            d.label.Text=table.concat(parts,"  ")
         end
     end
 end
 
-local function refreshAllESP() for _,p in ipairs(Players:GetPlayers()) do if p~=LP then createPlayerESP(p) end end end
-local function clearAllESP() for player,_ in pairs(ESPObjects) do clearPlayerESP(player) end;ESPObjects={} end
+local function refreshAllESP()
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP then createPlayerESP(p) end
+    end
+end
+
+local function clearAllESP()
+    for player,_ in pairs(ESPObjects) do clearPlayerESP(player) end
+    ESPObjects={}
+end
 
 local function createPromptESP(prompt)
     if PromptESPObjects[prompt] then return end
@@ -225,30 +395,52 @@ end
 
 local function closeAllFeatures()
     setNoclip(false);setInfiniteJump(false);setInstantInteract(false);setPromptESP(false)
-    setRemoveFog(false);setNightVision(false)
+    setRemoveFog(false);setNightVision(false);setHitboxEnabled(false)
     State.ESPHighlightEnabled=false;State.ESPNameEnabled=false;State.ESPHealthEnabled=false
+    State.SpeedEnabled=false;State.JumpEnabled=false
+    local _,hum=getCharacter()
+    if hum then
+        hum.WalkSpeed=baseSpeed;hum.UseJumpPower=true;hum.JumpPower=BASE_JUMP
+    end
     clearAllESP()
+end
+
+local function onPlayerAdded(player)
+    if player==LP then return end
+    if State.ESPHighlightEnabled or State.ESPNameEnabled or State.ESPHealthEnabled then
+        task.spawn(function() if player.Character then createPlayerESP(player) end end)
+    end
+    if State.HitboxEnabled then
+        task.spawn(function() if player.Character then applyHitboxToChar(player.Character) end end)
+    end
+    player.CharacterAdded:Connect(function(char)
+        task.wait(0.5)
+        if State.ESPHighlightEnabled or State.ESPNameEnabled or State.ESPHealthEnabled then createPlayerESP(player) end
+        if State.HitboxEnabled then task.wait(0.2);applyHitboxToChar(char) end
+    end)
 end
 
 LP.CharacterAdded:Connect(function()
     task.wait(0.5)
     if State.NoclipEnabled then setNoclip(true) end
     local _,hum=getCharacter()
-    if hum then hum.WalkSpeed=State.CustomSpeed*State.SpeedMultiplier;hum.UseJumpPower=true;hum.JumpPower=State.CustomJump end
+    if hum then
+        baseSpeed=hum.WalkSpeed
+        lastSetSpeed=baseSpeed
+        updateBaseSpeedLabel()
+        hum.UseJumpPower=true
+        hum.JumpPower=State.JumpEnabled and State.CustomJump or BASE_JUMP
+    end
     for _,p in ipairs(Players:GetPlayers()) do if p~=LP then task.defer(createPlayerESP,p) end end
 end)
 
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        if State.ESPHighlightEnabled or State.ESPNameEnabled or State.ESPHealthEnabled then createPlayerESP(player) end
-    end)
-end)
+for _,p in ipairs(Players:GetPlayers()) do onPlayerAdded(p) end
+Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player) clearPlayerESP(player) end)
 
 task.spawn(function()
     while task.wait(0.2) do
-        if State.ESPNameEnabled or State.ESPHealthEnabled then updateESPLabels() end
+        if State.ESPHealthEnabled then updateESPLabels() end
         if State.PromptESPEnabled then
             updatePromptESPLabels()
             for prompt,d in pairs(PromptESPObjects) do if not prompt.Parent or not d.gui.Parent then clearPromptESP(prompt) end end
@@ -399,7 +591,7 @@ local function buildNeoBetaUI()
     local lmD=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(7,7),BackgroundColor3=C.Cyan,BorderSizePixel=0,Rotation=45,Parent=logoMini})
     corner(lmD,1.5);grad(lmD,C.Cyan,C.Purple,45)
     new("TextLabel",{Position=UD.fromOffset(30,0),Size=UD.new(1,-140,1,0),BackgroundTransparency=1,Text="NEO BETA",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
-    new("TextLabel",{Position=UD.fromOffset(98,0),Size=UD.fromOffset(60,32),BackgroundTransparency=1,Text="V1 正式版",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
+    new("TextLabel",{Position=UD.fromOffset(98,0),Size=UD.fromOffset(60,32),BackgroundTransparency=1,Text="V2 测试版",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
     local onlineDot=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.new(1,-88,.5,0),Size=UD.fromOffset(6,6),BackgroundColor3=C.Green,BorderSizePixel=0,Parent=titleBar})
     corner(onlineDot,3)
     new("TextLabel",{Position=UD.new(1,-78,.5,-5),Size=UD.fromOffset(28,10),BackgroundTransparency=1,Text="ONLINE",TextColor3=C.Green,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
@@ -411,7 +603,7 @@ local function buildNeoBetaUI()
     new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(6,1.5),Rotation=45,BackgroundColor3=C.Dim,BorderSizePixel=0,Parent=closeBtn})
     new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(6,1.5),Rotation=-45,BackgroundColor3=C.Dim,BorderSizePixel=0,Parent=closeBtn})
 
-    local tabs={"主要","战斗","视觉","甩飞","其他"}
+    local tabs={"主要","战斗","视觉","甩飞","碰撞","其他"}
     local tabCount=#tabs
     local tabBar=new("Frame",{Position=UD.new(0,0,0,32),Size=UD.new(1,0,0,26),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=main})
     new("Frame",{Position=UD.new(0,0,0,25),Size=UD.new(1,0,0,1),BackgroundColor3=C.Line,BackgroundTransparency=0.4,BorderSizePixel=0,Parent=tabBar})
@@ -425,6 +617,7 @@ local function buildNeoBetaUI()
     for i=1,tabCount do pages[i]=new("Frame",{Size=UD.fromScale(1,1),BackgroundTransparency=1,Visible=(i==1),Parent=content}) end
     local resetToggleSetters={}
     local resetSliderSetters={}
+    local resetColorSetters={}
 
     local function makeToggle(parent,y,label,desc,accent,default,callback,noReset)
         local row=new("Frame",{Position=UD.fromOffset(10,y),Size=UD.new(1,-20,0,36),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=parent})
@@ -456,15 +649,26 @@ local function buildNeoBetaUI()
         end
         hit.Activated:Connect(function() setOn(not on) end)
         if not noReset then table.insert(resetToggleSetters,setOn) end
-        return setOn
+        return setOn,descLbl
     end
 
-    local function makeSlider(parent,y,label,accent,minVal,maxVal,defaultVal,suffix,callback)
+    local function makeSlider(parent,y,label,accent,minVal,maxVal,defaultVal,suffix,precision,callback)
         local row=new("Frame",{Position=UD.fromOffset(10,y),Size=UD.new(1,-20,0,38),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=parent})
         corner(row,5);stroke(row,C.Line,1,0.5)
         new("TextLabel",{Position=UD.fromOffset(12,4),Size=UD.new(1,-130,0,14),BackgroundTransparency=1,Text=label,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
-        local valBox=new("TextBox",{Position=UD.new(1,-92,0,4),Size=UD.fromOffset(80,16),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text=tostring(defaultVal)..(suffix or ""),TextColor3=accent,Font=Enum.Font.Code,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center,ClearTextOnFocus=false,Parent=row})
+        local initText=(precision==0) and (tostring(math.floor(defaultVal+0.5))..(suffix or "")) or (string.format("%."..precision.."f",defaultVal)..(suffix or ""))
+        local valBox=new("TextBox",{Position=UD.new(1,-92,0,4),Size=UD.fromOffset(80,16),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text=initText,TextColor3=accent,Font=Enum.Font.Code,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center,ClearTextOnFocus=false,Parent=row})
         corner(valBox,3);stroke(valBox,C.Line,1,0.4)
+        local function fmt(v)
+            if precision==0 then return tostring(math.floor(v+0.5))..(suffix or "") end
+            return string.format("%."..precision.."f",v)..(suffix or "")
+        end
+        local function round(v)
+            v=math.clamp(v,minVal,maxVal)
+            if precision==0 then return math.floor(v+0.5) end
+            local m=10^precision
+            return math.floor(v*m+0.5)/m
+        end
         local pct=(defaultVal-minVal)/(maxVal-minVal)
         local track=new("Frame",{Position=UD.fromOffset(12,26),Size=UD.new(1,-24,0,5),BackgroundColor3=C.Panel2,BorderSizePixel=0,Parent=row})
         corner(track,2.5)
@@ -475,18 +679,19 @@ local function buildNeoBetaUI()
         local hit=new("TextButton",{Size=UD.fromScale(1,1),BackgroundTransparency=1,Text="",AutoButtonColor=false,Parent=track})
         local dragging=false
         local function setValInternal(v,fireCallback)
-            v=math.clamp(math.floor(v+0.5),minVal,maxVal)
-            local p=(v-minVal)/(maxVal-minVal)
-            fill.Size=UD.new(p,0,1,0);dot.Position=UD.new(p,0,.5,0)
-            valBox.Text=tostring(v)..(suffix or "")
+            v=round(v)
+            local pp=(v-minVal)/(maxVal-minVal)
+            fill.Size=UD.new(pp,0,1,0);dot.Position=UD.new(pp,0,.5,0)
+            valBox.Text=fmt(v)
             if fireCallback and callback then callback(v) end
         end
         local function setVal(v) setValInternal(v,true) end
         local function update(input)
-            local p=math.clamp((input.Position.X-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
-            local v=math.floor(minVal+p*(maxVal-minVal)+0.5)
-            fill.Size=UD.new(p,0,1,0);dot.Position=UD.new(p,0,.5,0)
-            valBox.Text=tostring(v)..(suffix or "")
+            local pp=math.clamp((input.Position.X-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
+            local v=round(minVal+pp*(maxVal-minVal))
+            local pp2=(v-minVal)/(maxVal-minVal)
+            fill.Size=UD.new(pp2,0,1,0);dot.Position=UD.new(pp2,0,.5,0)
+            valBox.Text=fmt(v)
             if callback then callback(v) end
         end
         hit.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=true;update(input) end end)
@@ -499,6 +704,41 @@ local function buildNeoBetaUI()
         end)
         table.insert(resetSliderSetters,{fn=setVal,default=defaultVal})
         return setVal
+    end
+
+    local function makeColorPicker(parent,y,label,desc,accent,colors,defaultIdx,callback)
+        local row=new("Frame",{Position=UD.fromOffset(10,y),Size=UD.new(1,-20,0,36),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=parent})
+        corner(row,5);stroke(row,C.Line,1,0.5)
+        new("TextLabel",{Position=UD.fromOffset(12,4),Size=UD.new(1,-90,0,14),BackgroundTransparency=1,Text=label,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
+        new("TextLabel",{Position=UD.fromOffset(12,19),Size=UD.new(1,-90,0,11),BackgroundTransparency=1,Text=desc,TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
+        local btns={}
+        local bw,gap=18,4
+        local cur=defaultIdx or 1
+        for i,c in ipairs(colors) do
+            local rightOffset=-12-(#colors-i)*(bw+gap)
+            local b=new("TextButton",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,rightOffset,.5,0),Size=UD.fromOffset(bw,bw),BackgroundColor3=c.Color,BorderSizePixel=0,Text="",AutoButtonColor=false,Parent=row})
+            corner(b,3);stroke(b,(i==cur) and accent or C.Line,2,(i==cur) and 0 or 0.6)
+            btns[i]=b
+            b.Activated:Connect(function()
+                if i==cur then return end
+                local old=cur;cur=i
+                local os_=btns[old]:FindFirstChildOfClass("UIStroke")
+                if os_ then os_.Color=C.Line;os_.Transparency=0.6 end
+                local ns=btns[i]:FindFirstChildOfClass("UIStroke")
+                if ns then ns.Color=accent;ns.Transparency=0 end
+                if callback then callback(c.Color) end
+            end)
+        end
+        local function reset()
+            if cur==1 then return end
+            local old=cur;cur=1
+            local os_=btns[old]:FindFirstChildOfClass("UIStroke")
+            if os_ then os_.Color=C.Line;os_.Transparency=0.6 end
+            local ns=btns[1]:FindFirstChildOfClass("UIStroke")
+            if ns then ns.Color=accent;ns.Transparency=0 end
+            if callback then callback(colors[1].Color) end
+        end
+        table.insert(resetColorSetters,reset)
     end
 
     local function makeActionButton(parent,y,label,desc,accent,btnText,callback)
@@ -564,6 +804,7 @@ local function buildNeoBetaUI()
         resetBtn.Activated:Connect(function()
             for _,setter in ipairs(resetToggleSetters) do setter(false) end
             for _,s in ipairs(resetSliderSetters) do s.fn(s.default) end
+            for _,r in ipairs(resetColorSetters) do r() end
             closeAllFeatures()
             tw(resetBtn,0.08,{BackgroundColor3=C.Green});tw(resetBtn,0.2,{BackgroundColor3=C.Panel2})
         end)
@@ -580,11 +821,14 @@ local function buildNeoBetaUI()
 
     do
         local p=pages[2]
-        makeSlider(p,6,"移动速度",C.Cyan,16,300,State.CustomSpeed,"",function(v) setSpeed(v) end)
-        makeSlider(p,50,"速度倍数",C.Purple,1,20,State.SpeedMultiplier,"x",function(v) setSpeedMultiplier(v) end)
-        makeToggle(p,94,"无限跳跃","INFINITE JUMP",C.Cyan,State.InfiniteJumpEnabled,function(on) setInfiniteJump(on) end)
-        makeSlider(p,136,"跳跃高度",C.Purple,50,300,State.CustomJump,"",function(v) setJump(v) end)
-        makeActionButton(p,180,"飞行模式","FLY MODE",C.Cyan,"启动",flyingScript)
+        local _,descLbl=makeToggle(p,6,"启用移动速度","原始移速: 16",C.Cyan,false,function(on) State.SpeedEnabled=on end)
+        speedToggleDesc=descLbl
+        updateBaseSpeedLabel()
+        makeSlider(p,46,"速度倍数",C.Cyan,0.1,20,State.SpeedMultiplier,"x",1,function(v) State.SpeedMultiplier=v end)
+        makeToggle(p,88,"启用跳跃高度","JUMP TOGGLE",C.Purple,false,function(on) setJumpEnabled(on) end)
+        makeSlider(p,128,"跳跃高度",C.Purple,50,300,State.CustomJump,"",0,function(v) setJump(v) end)
+        makeToggle(p,170,"无限跳跃","INFINITE JUMP",C.Cyan,State.InfiniteJumpEnabled,function(on) setInfiniteJump(on) end)
+        makeActionButton(p,210,"飞行模式","FLY MODE",C.Cyan,"启动",flyingScript)
     end
 
     do
@@ -609,6 +853,22 @@ local function buildNeoBetaUI()
 
     do
         local p=pages[5]
+        local colors={
+            {Color=Color3.fromRGB(255,215,0)},
+            {Color=Color3.fromRGB(255,60,60)},
+            {Color=Color3.fromRGB(60,150,255)},
+            {Color=Color3.fromRGB(60,255,120)},
+            {Color=Color3.fromRGB(180,80,255)},
+            {Color=Color3.fromRGB(255,255,255)},
+        }
+        makeToggle(p,6,"启用碰撞箱","HITBOX TOGGLE",C.Green,false,function(on) setHitboxEnabled(on) end)
+        makeSlider(p,46,"碰撞箱大小",C.Green,1,50,State.HitboxSize,"",0,function(v) setHitboxSize(v) end)
+        makeSlider(p,86,"碰撞箱透明度",C.Green,0,1,State.HitboxTransparency,"",2,function(v) setHitboxTransparency(v) end)
+        makeColorPicker(p,126,"碰撞箱颜色","点击切换",C.Green,colors,1,function(c) setHitboxColor(c) end)
+    end
+
+    do
+        local p=pages[6]
         makeToggle(p,6,"穿墙模式","NOCLIP",C.Cyan,State.NoclipEnabled,function(on) setNoclip(on) end)
         makeToggle(p,46,"秒互动","INSTANT INTERACT",C.Purple,State.InstantInteractEnabled,function(on) setInstantInteract(on) end)
     end
