@@ -10,7 +10,7 @@ local PG=LP:WaitForChild("PlayerGui")
 local CAM=workspace.CurrentCamera
 local UD=UDim2
 
-if not _G.NeoBetaConfig then _G.NeoBetaConfig={LoadScreenEnabled=true} end
+if not _G.VoidConfig then _G.VoidConfig={LoadScreenEnabled=true} end
 
 local C={Void=Color3.fromRGB(6,2,16),Bg=Color3.fromRGB(14,5,28),Panel=Color3.fromRGB(24,12,45),Panel2=Color3.fromRGB(38,20,65),Line=Color3.fromRGB(70,40,110),Cyan=Color3.fromRGB(180,100,255),Purple=Color3.fromRGB(110,50,200),Green=Color3.fromRGB(160,220,255),Red=Color3.fromRGB(255,70,120),Text=Color3.fromRGB(230,215,255),Dim=Color3.fromRGB(140,110,180),BarBg=Color3.fromRGB(30,18,50)}
 
@@ -20,7 +20,7 @@ local speedToggleDesc
 local spectateTarget,followTarget
 local spectateSetOn,followSetOn
 
-local State={NoclipEnabled=false,InfiniteJumpEnabled=false,SpeedEnabled=false,JumpEnabled=false,ESPHighlightEnabled=false,ESPNameEnabled=false,ESPHealthEnabled=false,InstantInteractEnabled=false,PromptESPEnabled=false,RemoveFogEnabled=false,NightVisionEnabled=false,HitboxEnabled=false,SpeedMultiplier=1,CustomJump=50,HitboxSize=10,HitboxTransparency=0.7,HitboxColor=Color3.fromRGB(255,215,0),LoadScreenEnabled=_G.NeoBetaConfig.LoadScreenEnabled}
+local State={NoclipEnabled=false,InfiniteJumpEnabled=false,SpeedEnabled=false,JumpEnabled=false,ESPHighlightEnabled=false,ESPNameEnabled=false,ESPHealthEnabled=false,InstantInteractEnabled=false,PromptESPEnabled=false,RemoveFogEnabled=false,NightVisionEnabled=false,HitboxEnabled=false,SpeedMultiplier=1,CustomJump=50,HitboxSize=10,HitboxTransparency=0.7,HitboxColor=Color3.fromRGB(255,215,0),LoadScreenEnabled=_G.VoidConfig.LoadScreenEnabled}
 
 local ESPObjects={}
 local PromptESPObjects={}
@@ -204,7 +204,7 @@ local function setHitboxEnabled(enabled)
     State.HitboxEnabled=enabled
     if hitboxConn then hitboxConn:Disconnect();hitboxConn=nil end
     if not enabled then
-        for char,_ in pairs(HitboxOrig) do pcall(resetHitbox,char) end
+        for char,_ in pairs(HitboxOrig) do resetHitbox(char) end
         return
     end
     refreshHitbox()
@@ -222,14 +222,14 @@ local function setInstantInteract(enabled)
     State.InstantInteractEnabled=enabled
     if instantConn then instantConn:Disconnect();instantConn=nil end
     if enabled then
-        local function patch(p) if p:IsA("ProximityPrompt") then pcall(function() p.HoldDuration=0 end) end end
+        local function patch(p) if p:IsA("ProximityPrompt") then p.HoldDuration=0 end end
         for _,o in ipairs(workspace:GetDescendants()) do patch(o) end
         instantConn=workspace.DescendantAdded:Connect(function(o) if State.InstantInteractEnabled then patch(o) end end)
     end
 end
 
-local function flyingScript() local ok,err=pcall(function() loadstring(game:HttpGet("https://pastebin.com/raw/ZBzcTm1f"))() end);if not ok then warn("飞行脚本加载失败: "..tostring(err)) end end
 local function runExternal(url,name) local ok,err=pcall(function() loadstring(game:HttpGet(url))() end);if not ok then notify(name,"脚本加载失败: "..tostring(err)) end end
+local function flyingScript() runExternal("https://pastebin.com/raw/ZBzcTm1f","飞行") end
 
 local function clearPlayerESP(player)
     local d=ESPObjects[player];if not d then return end
@@ -240,8 +240,9 @@ end
 
 local function createPlayerESP(player)
     if player==LP then return end
-    local char=player.Character;if not char then return end
     clearPlayerESP(player)
+    if not (State.ESPHighlightEnabled or State.ESPNameEnabled or State.ESPHealthEnabled) then return end
+    local char=player.Character;if not char then return end
     local d={}
     if State.ESPHighlightEnabled then
         local hl=Instance.new("Highlight")
@@ -295,7 +296,7 @@ local function updateESPLabels()
 end
 
 local function refreshAllESP() for _,p in ipairs(Players:GetPlayers()) do if p~=LP then createPlayerESP(p) end end end
-local function clearAllESP() for player,_ in pairs(ESPObjects) do clearPlayerESP(player) end;ESPObjects={} end
+local function clearAllESP() for player,_ in pairs(ESPObjects) do clearPlayerESP(player) end end
 
 local function createPromptESP(prompt)
     if PromptESPObjects[prompt] then return end
@@ -369,7 +370,7 @@ local function setNightVision(enabled)
         Lighting.Brightness=3;Lighting.Ambient=Color3.fromRGB(140,140,140);Lighting.OutdoorAmbient=Color3.fromRGB(160,160,160);Lighting.GlobalShadows=false
         if not nvCC then
             nvCC=Instance.new("ColorCorrectionEffect")
-            nvCC.Name="NeoBetaNightVision";nvCC.Brightness=0.15;nvCC.Contrast=0.05;nvCC.Saturation=0
+            nvCC.Name="VoidNightVision";nvCC.Brightness=0.15;nvCC.Contrast=0.05;nvCC.Saturation=0
             nvCC.Parent=Lighting
         end
     else
@@ -433,7 +434,7 @@ task.spawn(function()
 end)
 
 local function runLoadScreen()
-    local gui=new("ScreenGui",{Name="NeoBetaLoad",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
+    local gui=new("ScreenGui",{Name="VoidLoad",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
     local mask=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=C.Void,BackgroundTransparency=1,BorderSizePixel=0,Parent=gui})
     local splash=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(260,130),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,Parent=gui})
     corner(splash,6);stroke(splash,C.Cyan,1,0.4);techCorners(splash,C.Cyan,12,2,0.1)
@@ -443,7 +444,7 @@ local function runLoadScreen()
     local mRing=ring(logoBox,32,C.Purple,1.2,0.35)
     local dCore=diamond(logoBox,12,12,20,C.Cyan,0);grad(dCore,C.Cyan,C.Purple,45)
     diamond(logoBox,17,17,10,C.Bg,0)
-    new("TextLabel",{Position=UD.new(0,0,0,68),Size=UD.new(1,0,0,16),BackgroundTransparency=1,Text="N E O   B E T A",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=14,Parent=splash})
+    new("TextLabel",{Position=UD.new(0,0,0,68),Size=UD.new(1,0,0,16),BackgroundTransparency=1,Text="V O I D",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=14,Parent=splash})
     new("TextLabel",{Position=UD.new(0,0,0,86),Size=UD.new(1,0,0,12),BackgroundTransparency=1,Text="INITIALIZING",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,Parent=splash})
     local sBar=new("Frame",{AnchorPoint=Vector2.new(.5,0),Position=UD.new(.5,0,0,106),Size=UD.fromOffset(180,3),BackgroundColor3=C.Panel2,BorderSizePixel=0,Parent=splash})
     corner(sBar,2)
@@ -456,7 +457,7 @@ local function runLoadScreen()
     corner(header,6)
     new("Frame",{Position=UD.new(0,0,0,20),Size=UD.new(1,0,0,6),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root})
     diamond(header,10,8,10,C.Cyan,0)
-    new("TextLabel",{Position=UD.fromOffset(26,0),Size=UD.new(1,-90,1,0),BackgroundTransparency=1,Text="NEO  BETA  //  INJECTION",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,Parent=header})
+    new("TextLabel",{Position=UD.fromOffset(26,0),Size=UD.new(1,-90,1,0),BackgroundTransparency=1,Text="VOID  //  INJECTION",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,Parent=header})
     new("TextLabel",{Position=UD.new(1,-70,0,0),Size=UD.fromOffset(62,26),BackgroundTransparency=1,Text="SECURE",TextColor3=C.Green,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right,Parent=header})
     new("Frame",{Position=UD.new(0,0,0,26),Size=UD.new(1,0,0,1),BackgroundColor3=C.Line,BackgroundTransparency=0.5,BorderSizePixel=0,Parent=root})
     local pArea=new("Frame",{Position=UD.fromOffset(12,36),Size=UD.fromOffset(96,94),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root})
@@ -557,13 +558,13 @@ end
 if State.LoadScreenEnabled then runLoadScreen() end
 
 local function buildUI()
-    local gui=new("ScreenGui",{Name="NeoBetaUI",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
+    local gui=new("ScreenGui",{Name="VoidUI",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
     local WIN_W,WIN_H=320,340
     local mainHomePos=UD.fromOffset(math.max(8,(CAM.ViewportSize.X-WIN_W)/2),math.max(8,(CAM.ViewportSize.Y-WIN_H)/2))
     local main=new("Frame",{Position=mainHomePos,Size=UD.fromOffset(WIN_W,WIN_H),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=true,Parent=gui})
     corner(main,8)
-    new("ImageLabel",{Name="NeoBetaBackground",Size=UD.fromScale(1,1),Position=UD.fromScale(0,0),BackgroundTransparency=1,Image="rbxassetid://131769990624851",ImageTransparency=0.35,ScaleType=Enum.ScaleType.Crop,ZIndex=0,Parent=main})
-    corner(main:FindFirstChild("NeoBetaBackground"),8)
+    new("ImageLabel",{Name="VoidBackground",Size=UD.fromScale(1,1),Position=UD.fromScale(0,0),BackgroundTransparency=1,Image="rbxassetid://131769990624851",ImageTransparency=0.35,ScaleType=Enum.ScaleType.Crop,ZIndex=0,Parent=main})
+    corner(main:FindFirstChild("VoidBackground"),8)
     local mainStroke=stroke(main,C.Cyan,1,0.5)
     techCorners(main,C.Cyan,14,2,0.1)
     local mainScale=fitScale(main,WIN_W,30,0.75)
@@ -578,8 +579,8 @@ local function buildUI()
     corner(lmR,7);stroke(lmR,C.Cyan,1.2,0.3)
     local lmD=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(7,7),BackgroundColor3=C.Cyan,BorderSizePixel=0,Rotation=45,Parent=logoMini})
     corner(lmD,1.5);grad(lmD,C.Cyan,C.Purple,45)
-    new("TextLabel",{Position=UD.fromOffset(30,0),Size=UD.new(1,-140,1,0),BackgroundTransparency=1,Text="NEO BETA",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
-    new("TextLabel",{Position=UD.fromOffset(98,0),Size=UD.fromOffset(60,32),BackgroundTransparency=1,Text="V2 测试版",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
+    new("TextLabel",{Position=UD.fromOffset(30,0),Size=UD.new(1,-140,1,0),BackgroundTransparency=1,Text="VOID",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
+    new("TextLabel",{Position=UD.fromOffset(72,0),Size=UD.fromOffset(60,32),BackgroundTransparency=1,Text="V3 测试版",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
     local onlineDot=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.new(1,-88,.5,0),Size=UD.fromOffset(6,6),BackgroundColor3=C.Green,BorderSizePixel=0,Parent=titleBar})
     corner(onlineDot,3)
     new("TextLabel",{Position=UD.new(1,-78,.5,-5),Size=UD.fromOffset(28,10),BackgroundTransparency=1,Text="ONLINE",TextColor3=C.Green,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
@@ -693,7 +694,6 @@ local function buildUI()
             if n then setV(n,true) else setV(defV,false) end
         end)
         table.insert(resetSliders,{fn=setVal,default=defV})
-        return setVal
     end
 
     local function makeColorPicker(parent,y,label,desc,accent,colors,defIdx,cb)
@@ -821,11 +821,11 @@ local function buildUI()
             closeAllFeatures()
             tw(rb,0.08,{BackgroundColor3=C.Green});tw(rb,0.2,{BackgroundColor3=C.Panel2})
         end)
-        makeToggle(p,116,"启动加载界面","LOAD SCREEN",C.Cyan,State.LoadScreenEnabled,function(on) State.LoadScreenEnabled=on;_G.NeoBetaConfig.LoadScreenEnabled=on end,true)
+        makeToggle(p,116,"启动加载界面","LOAD SCREEN",C.Cyan,State.LoadScreenEnabled,function(on) State.LoadScreenEnabled=on;_G.VoidConfig.LoadScreenEnabled=on end,true)
         makeActionBtn(p,160,"TX Script","全自动翻译",C.Green,"启动",function()
             local ok,err=pcall(function()
                 TX = "TX Script"
-                local Script = "全自动翻译"
+                Script = "全自动翻译"
                 loadstring(game:HttpGet("https://raw.githubusercontent.com/JsYb666/Item/refs/heads/main/Auto-language"))()
             end)
             if not ok then notify("TX Script","加载失败: "..tostring(err)) end
@@ -872,7 +872,6 @@ local function buildUI()
         spectateSetOn=makeActionBtn(p,170,"选人观战","相机跟随所选玩家",C.Purple,"启动",function(setActive,active)
             if active then
                 stopSpectate()
-                setActive(false)
                 return
             end
             showPlayerSelect(function(plr)
@@ -888,7 +887,6 @@ local function buildUI()
         followSetOn=makeActionBtn(p,210,"持续贴紧","每帧贴紧所选玩家",C.Green,"启动",function(setActive,active)
             if active then
                 stopFollow()
-                setActive(false)
                 return
             end
             showPlayerSelect(function(plr)
@@ -931,8 +929,8 @@ local function buildUI()
     local pl=new("TextLabel",{Position=UD.new(1,-90,0,0),Size=UD.fromOffset(80,24),BackgroundTransparency=1,Text="PING 12ms",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Right,Parent=sb})
 
     local MINI=46
-    local mHP=UD.fromOffset(CAM.ViewportSize.X-MINI-20,CAM.ViewportSize.Y*0.4)
-    local mini=new("TextButton",{Position=mHP,Size=UD.fromOffset(MINI,MINI),BackgroundColor3=C.Bg,BorderSizePixel=0,Text="",AutoButtonColor=false,Visible=false,Parent=gui})
+    local miniHomePos=UD.fromOffset(CAM.ViewportSize.X-MINI-20,CAM.ViewportSize.Y*0.4)
+    local mini=new("TextButton",{Position=miniHomePos,Size=UD.fromOffset(MINI,MINI),BackgroundColor3=C.Bg,BorderSizePixel=0,Text="",AutoButtonColor=false,Visible=false,Parent=gui})
     corner(mini,MINI/2);stroke(mini,C.Cyan,1.4,0.2)
     local msc=new("UIScale",{Scale=1,Parent=mini})
     local orb=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(30,30),BackgroundTransparency=1,Parent=mini})
@@ -946,17 +944,28 @@ local function buildUI()
         orb.Rotation=orb.Rotation+dt*140
         msc.Scale=1+((math.sin(os.clock()*3)+1)/2)*0.04
     end)
-    main:GetPropertyChangedSignal("Position"):Connect(function() if main.Visible then mHP=main.Position end end)
-    mini:GetPropertyChangedSignal("Position"):Connect(function() if mini.Visible then mHP=mini.Position end end)
+    main:GetPropertyChangedSignal("Position"):Connect(function()
+        if main.Visible then mainHomePos=main.Position end
+    end)
+    mini:GetPropertyChangedSignal("Position"):Connect(function()
+        if mini.Visible then miniHomePos=mini.Position end
+    end)
     makeDraggable(mini,mini,function()
-        mini.Visible=false;main.Position=mHP;main.Visible=true
-        mainScale.Scale=0.86;tw(mainScale,0.3,{Scale=1},Enum.EasingStyle.Back)
+        mini.Visible=false
+        main.Position=mainHomePos
+        main.Visible=true
+        mainScale.Scale=0.86
+        tw(mainScale,0.3,{Scale=1},Enum.EasingStyle.Back)
     end)
     makeDraggable(main,dragHandle)
     minBtn.Activated:Connect(function()
         tw(minBtn,0.08,{BackgroundColor3=C.Cyan});tw(minBtn,0.15,{BackgroundColor3=C.Panel2})
-        main.Visible=false;mini.Position=mHP;mini.Visible=true
-        msc.Scale=0.4;tw(msc,0.35,{Scale=1},Enum.EasingStyle.Back)
+        main.Visible=false
+        mini.Position=UD.fromOffset(CAM.ViewportSize.X-MINI-20,CAM.ViewportSize.Y*0.4)
+        miniHomePos=mini.Position
+        mini.Visible=true
+        msc.Scale=0.4
+        tw(msc,0.35,{Scale=1},Enum.EasingStyle.Back)
     end)
     closeBtn.Activated:Connect(function()
         tw(closeBtn,0.08,{BackgroundColor3=C.Red})
