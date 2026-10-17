@@ -100,7 +100,10 @@ local function applyGuardSize(size)
     b.Left.Size=UD.new(0,size,1,0)
     b.Right.Size=UD.new(0,size,1,0)
     local active=GuardZones.Enabled and size>0
-    for _,v in pairs(b) do v.Active=active end
+    for _,v in pairs(b) do
+        v.Active=active
+        pcall(function() v.Interactable=active end)
+    end
 end
 local function flashGuardZones(size)
     applyGuardSize(size)
@@ -113,7 +116,14 @@ local function flashGuardZones(size)
         for _,v in pairs(GuardZones.Buttons) do tw(v,1.4,{BackgroundTransparency=1},Enum.EasingStyle.Quart) end
     end)
 end
-local function setGuardEnabled(on) GuardZones.Enabled=on;applyGuardSize(GuardZones.Size) end
+local function setGuardEnabled(on)
+    GuardZones.Enabled=on
+    GuardZones.FadeToken=GuardZones.FadeToken+1
+    if not on then
+        for _,v in pairs(GuardZones.Buttons) do v.BackgroundTransparency=1 end
+    end
+    applyGuardSize(GuardZones.Size)
+end
 setupGuardZones()
 
 local function stopSpectate() spectateTarget=nil local _,h=getChar() if h then CAM.CameraSubject=h end if spectateSetOn then spectateSetOn(false) end end
@@ -732,6 +742,8 @@ local function closeAllFeatures()
     ESP_SETTINGS.HighlightEnabled=false
     StopFlingLoop();StopSpin();TP_Loop=false
     if TP_LoopConn then TP_LoopConn:Disconnect();TP_LoopConn=nil end
+    setGuardEnabled(false)
+    applyGuardSize(0)
     local _,h=getChar();if h then h.WalkSpeed=baseSpeed;h.UseJumpPower=true;h.JumpPower=BASE_JUMP end
     clearAllESP()
 end
@@ -978,9 +990,8 @@ local function runLoadScreen()
     task.wait(1.6);pC:Disconnect()
     aO.tweenTo(1,0.35);task.wait(0.37)
     okCard.Visible=false;okCard:Destroy();root:Destroy()
-    tw(mask,0.8,{BackgroundTransparency=1},Enum.EasingStyle.Quart)
-    tw(scene,0.8,{BackgroundTransparency=1},Enum.EasingStyle.Quart)
-    task.wait(0.82)
+    tw(mask,0.7,{BackgroundTransparency=0},Enum.EasingStyle.Quart)
+    task.wait(0.72)
     if animConn then animConn:Disconnect();animConn=nil end
     gui:Destroy()
 end
@@ -1086,9 +1097,11 @@ local function buildUI()
         corner(dot,5.5);stroke(dot,C.Bg,2,0)
         local hit=new("TextButton",{Size=UD.fromScale(1,1),BackgroundTransparency=1,Text="",AutoButtonColor=false,Parent=track})
         local dragging=false
+        local focused=false
         local function setV(v,fire)
             v=rnd(v);local pp=(v-minV)/(maxV-minV)
-            fill.Size=UD.new(pp,0,1,0);dot.Position=UD.new(pp,0,.5,0);vb.Text=fmt(v)
+            fill.Size=UD.new(pp,0,1,0);dot.Position=UD.new(pp,0,.5,0)
+            if not focused then vb.Text=fmt(v) end
             if fire and cb then cb(v) end
         end
         local function setVal(v) setV(v,true) end
@@ -1096,9 +1109,9 @@ local function buildUI()
             local pp=math.clamp((input.Position.X-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
             local v=rnd(minV+pp*(maxV-minV))
             local pp2=(v-minV)/(maxV-minV)
-            tw(fill,0.14,{Size=UD.new(pp2,0,1,0)},Enum.EasingStyle.Quint)
-            tw(dot,0.14,{Position=UD.new(pp2,0,.5,0)},Enum.EasingStyle.Quint)
-            vb.Text=fmt(v)
+            fill.Size=UD.new(pp2,0,1,0)
+            dot.Position=UD.new(pp2,0,.5,0)
+            if not focused then vb.Text=fmt(v) end
             if cb then cb(v) end
         end
         hit.InputBegan:Connect(function(input)
@@ -1114,8 +1127,19 @@ local function buildUI()
                 dragging=false
             end
         end)
+        vb.Focused:Connect(function()
+            focused=true
+            task.defer(function()
+                if focused then
+                    vb.Text=""
+                    pcall(function() vb.CursorPosition=0 end)
+                end
+            end)
+        end)
         vb.FocusLost:Connect(function()
-            local n=tonumber((vb.Text:gsub("[^%d%.%-]","")))
+            focused=false
+            local cleaned=vb.Text:gsub("[^%d%.%-]","")
+            local n=tonumber(cleaned)
             if n then setV(n,true) else setV(defV,false) end
         end)
         table.insert(resetSliders,{fn=setVal,default=defV})
