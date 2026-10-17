@@ -43,7 +43,7 @@ local function makeAlpha(root)
     col(root);for _,x in ipairs(root:GetDescendants()) do col(x) end
     local a={}
     function a.set(t) for _,r in ipairs(d) do r.i[r.p]=r.b+(1-r.b)*t end end
-    function a.tweenTo(t,du) for _,r in ipairs(d) do tw(r.i,du,{[r.p]=r.b+(1-r.b)*t}) end end
+    function a.tweenTo(t,du) for _,r in ipairs(d) do tw(r.i,du,{[r.p]=r.b+(1-r.b)*t},Enum.EasingStyle.Quart) end end
     return a
 end
 local function makeDraggable(t,h,onClick)
@@ -73,6 +73,49 @@ end
 local function applyJump() local _,h=getChar();if not h then return end h.UseJumpPower=true h.JumpPower=State.JumpEnabled and State.CustomJump or BASE_JUMP end
 local function setJump(v) State.CustomJump=v;applyJump() end
 local function setJumpEnabled(v) State.JumpEnabled=v;applyJump() end
+
+local GuardZones={Enabled=false,Size=0,Buttons={},FadeToken=0,Gui=nil}
+local function setupGuardZones()
+    if GuardZones.Gui then return end
+    local sg=new("ScreenGui",{Name="VoidGuard",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=9998,Parent=PG})
+    GuardZones.Gui=sg
+    local configs={
+        {name="Top",anchor=Vector2.new(0,0),pos=UD.new(0,0,0,0),size=UD.new(1,0,0,0)},
+        {name="Bottom",anchor=Vector2.new(0,1),pos=UD.new(0,0,1,0),size=UD.new(1,0,0,0)},
+        {name="Left",anchor=Vector2.new(0,0),pos=UD.new(0,0,0,0),size=UD.new(0,0,1,0)},
+        {name="Right",anchor=Vector2.new(1,0),pos=UD.new(1,0,0,0),size=UD.new(0,0,1,0)},
+    }
+    for _,cfg in ipairs(configs) do
+        local b=new("TextButton",{Name=cfg.name,AnchorPoint=cfg.anchor,Position=cfg.pos,Size=cfg.size,BackgroundColor3=Color3.fromRGB(255,90,140),BackgroundTransparency=1,BorderSizePixel=0,Text="",AutoButtonColor=false,Active=false,Parent=sg})
+        GuardZones.Buttons[cfg.name]=b
+    end
+end
+local function applyGuardSize(size)
+    size=math.clamp(math.floor(size+0.5),0,200)
+    GuardZones.Size=size
+    local b=GuardZones.Buttons
+    if not b.Top then return end
+    b.Top.Size=UD.new(1,0,0,size)
+    b.Bottom.Size=UD.new(1,0,0,size)
+    b.Left.Size=UD.new(0,size,1,0)
+    b.Right.Size=UD.new(0,size,1,0)
+    local active=GuardZones.Enabled and size>0
+    for _,v in pairs(b) do v.Active=active end
+end
+local function flashGuardZones(size)
+    applyGuardSize(size)
+    GuardZones.FadeToken=GuardZones.FadeToken+1
+    local myToken=GuardZones.FadeToken
+    if size<=0 then return end
+    for _,v in pairs(GuardZones.Buttons) do v.BackgroundTransparency=0.45 end
+    task.delay(5,function()
+        if GuardZones.FadeToken~=myToken then return end
+        for _,v in pairs(GuardZones.Buttons) do tw(v,1.4,{BackgroundTransparency=1},Enum.EasingStyle.Quart) end
+    end)
+end
+local function setGuardEnabled(on) GuardZones.Enabled=on;applyGuardSize(GuardZones.Size) end
+setupGuardZones()
+
 local function stopSpectate() spectateTarget=nil local _,h=getChar() if h then CAM.CameraSubject=h end if spectateSetOn then spectateSetOn(false) end end
 local function stopFollow() followTarget=nil if followSetOn then followSetOn(false) end end
 RunService.Heartbeat:Connect(function(dt)
@@ -725,12 +768,102 @@ task.spawn(function()
         end
     end
 end)
+
 local function runLoadScreen()
     local gui=new("ScreenGui",{Name="VoidLoad",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
-    local mask=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=C.Void,BackgroundTransparency=1,BorderSizePixel=0,Parent=gui})
-    local splash=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(260,130),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,Parent=gui})
+    local scene=new("Frame",{Size=UD.fromScale(1,1),BackgroundTransparency=1,ClipsDescendants=true,ZIndex=1,Parent=gui})
+    local deepBg=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=Color3.fromRGB(10,3,22),BorderSizePixel=0,ZIndex=1,Parent=scene})
+    local deepG=grad(deepBg,Color3.fromRGB(18,6,40),Color3.fromRGB(2,0,8),90)
+    deepG.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0.35)})
+    local galaxyRoot=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(2.1,.65),BackgroundTransparency=1,BorderSizePixel=0,Rotation=-22,ZIndex=2,Parent=scene})
+    local band1=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(1,1),BackgroundColor3=Color3.fromRGB(90,40,180),BackgroundTransparency=0.8,BorderSizePixel=0,Parent=galaxyRoot})
+    corner(band1,400)
+    local band2=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(.82,.5),BackgroundColor3=Color3.fromRGB(150,90,240),BackgroundTransparency=0.72,BorderSizePixel=0,Parent=galaxyRoot})
+    corner(band2,400)
+    local band3=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(.58,.24),BackgroundColor3=Color3.fromRGB(220,190,255),BackgroundTransparency=0.7,BorderSizePixel=0,Parent=galaxyRoot})
+    corner(band3,400)
+    local stars={}
+    for i=1,90 do
+        local sz=math.random(1,3)
+        local cval=math.random(180,255)
+        local s=new("Frame",{Position=UD.fromOffset(math.random(0,2000),math.random(0,1200)),Size=UD.fromOffset(sz,sz),BackgroundColor3=Color3.fromRGB(cval,cval-15,255),BackgroundTransparency=math.random(20,75)/100,BorderSizePixel=0,ZIndex=3,Parent=scene})
+        corner(s,sz)
+        table.insert(stars,{inst=s,phase=math.random()*math.pi*2,speed=math.random(10,40)/10,baseAlpha=s.BackgroundTransparency,driftY=math.random(2,7)/10})
+    end
+    local planets={}
+    local function addPlanet(x,y,sz,c1,c2,rotSpd,floatAmp,floatSpd)
+        local p=new("Frame",{Position=UD.fromOffset(x,y),Size=UD.fromOffset(sz,sz),BackgroundColor3=c1,BorderSizePixel=0,ZIndex=3,Parent=scene})
+        corner(p,sz)
+        local pg=grad(p,c1,c2,45)
+        stroke(p,c2,1.2,0.35)
+        local moonSz=math.max(4,math.floor(sz*0.14))
+        local moon=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(moonSz,moonSz),BackgroundColor3=Color3.fromRGB(230,220,255),BorderSizePixel=0,ZIndex=4,Parent=p})
+        corner(moon,moonSz)
+        table.insert(planets,{inst=p,grad=pg,moon=moon,baseX=x,baseY=y,floatAmp=floatAmp,floatSpd=floatSpd,rot=0,rotSpd=rotSpd,phase=math.random()*math.pi*2})
+    end
+    addPlanet(60,100,90,Color3.fromRGB(120,60,200),Color3.fromRGB(40,15,80),10,7,0.6)
+    addPlanet(1050,530,140,Color3.fromRGB(180,80,220),Color3.fromRGB(60,20,100),-6,12,0.42)
+    addPlanet(880,80,50,Color3.fromRGB(150,120,255),Color3.fromRGB(60,40,140),14,5,0.85)
+    local vstars={}
+    local function addVStar(x,y,sz)
+        local wrap=new("Frame",{Position=UD.fromOffset(x,y),Size=UD.fromOffset(sz,sz),BackgroundTransparency=1,ZIndex=4,Parent=scene})
+        local glow=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(sz*3,sz*3),BackgroundColor3=Color3.fromRGB(180,120,255),BackgroundTransparency=0.85,BorderSizePixel=0,Parent=wrap})
+        corner(glow,sz*3)
+        local h1=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(sz*6,1),BackgroundColor3=Color3.fromRGB(230,210,255),BackgroundTransparency=0.4,BorderSizePixel=0,Parent=wrap})
+        corner(h1,1)
+        local h2=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(1,sz*6),BackgroundColor3=Color3.fromRGB(230,210,255),BackgroundTransparency=0.4,BorderSizePixel=0,Parent=wrap})
+        corner(h2,1)
+        local core=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(sz,sz),BackgroundColor3=Color3.fromRGB(255,235,255),BorderSizePixel=0,Parent=wrap})
+        corner(core,sz)
+        table.insert(vstars,{inst=wrap,core=core,glow=glow,h1=h1,h2=h2,phase=math.random()*math.pi*2,speed=math.random(15,45)/10,baseSize=sz})
+    end
+    addVStar(240,190,4);addVStar(1380,320,5);addVStar(680,520,3);addVStar(1620,700,4)
+    addVStar(320,820,3);addVStar(1020,140,3);addVStar(1500,180,2);addVStar(500,650,2)
+    local animConn=RunService.RenderStepped:Connect(function(dt)
+        if not gui or not gui.Parent then if animConn then animConn:Disconnect();animConn=nil end return end
+        local t=os.clock()
+        for _,s in ipairs(stars) do
+            local inst=s.inst
+            if inst and inst.Parent then
+                local pulse=(math.sin(t*s.speed+s.phase)+1)*0.5
+                inst.BackgroundTransparency=s.baseAlpha+(1-s.baseAlpha)*(1-pulse)*0.45
+                local pos=inst.Position
+                local ny=pos.Y.Offset-s.driftY*dt*40
+                if ny<-20 then ny=1220 end
+                inst.Position=UD.new(pos.X.Scale,pos.X.Offset,pos.Y.Scale,ny)
+            end
+        end
+        for _,p in ipairs(planets) do
+            local inst=p.inst
+            if inst and inst.Parent then
+                p.phase=p.phase+dt*p.floatSpd
+                local fy=math.sin(p.phase)*p.floatAmp
+                local fx=math.cos(p.phase*0.7)*p.floatAmp*0.6
+                inst.Position=UD.new(0,p.baseX+fx,0,p.baseY+fy)
+                p.rot=p.rot+dt*p.rotSpd
+                p.grad.Rotation=p.rot
+                if p.moon and p.moon.Parent then
+                    local ang=t*p.rotSpd*math.pi/180
+                    p.moon.Position=UD.new(0.5+math.cos(ang)*0.62,0,0.5+math.sin(ang)*0.62,0)
+                end
+            end
+        end
+        for _,v in ipairs(vstars) do
+            local inst=v.inst
+            if inst and inst.Parent then
+                local pulse=(math.sin(t*v.speed+v.phase)+1)*0.5
+                local sc=0.75+pulse*0.55
+                if v.core and v.core.Parent then v.core.Size=UD.fromOffset(v.baseSize*sc,v.baseSize*sc) end
+                if v.glow and v.glow.Parent then v.glow.Size=UD.fromOffset(v.baseSize*sc*3.4,v.baseSize*sc*3.4);v.glow.BackgroundTransparency=0.75+pulse*0.15 end
+                if v.h1 and v.h1.Parent then v.h1.BackgroundTransparency=0.3+pulse*0.4;v.h1.Size=UD.fromOffset(v.baseSize*sc*7,1) end
+                if v.h2 and v.h2.Parent then v.h2.BackgroundTransparency=0.3+pulse*0.4;v.h2.Size=UD.fromOffset(1,v.baseSize*sc*7) end
+            end
+        end
+    end)
+    local mask=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=C.Void,BackgroundTransparency=0,BorderSizePixel=0,ZIndex=50,Parent=gui})
+    local splash=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(260,130),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,ZIndex=100,Parent=gui})
     corner(splash,6);stroke(splash,C.Cyan,1,0.4);techCorners(splash,C.Cyan,12,2,0.1)
-    local splashScale=new("UIScale",{Scale=0.88,Parent=splash})
+    local splashScale=new("UIScale",{Scale=0.8,Parent=splash})
     local logoBox=new("Frame",{AnchorPoint=Vector2.new(.5,0),Position=UD.new(.5,0,0,16),Size=UD.fromOffset(44,44),BackgroundTransparency=1,Parent=splash})
     local oRing=ring(logoBox,44,C.Cyan,1.5,0.25)
     local mRing=ring(logoBox,32,C.Purple,1.2,0.35)
@@ -742,7 +875,7 @@ local function runLoadScreen()
     corner(sBar,2)
     local sFill=new("Frame",{Size=UD.new(0,0,1,0),BackgroundColor3=C.Cyan,BorderSizePixel=0,Parent=sBar})
     corner(sFill,2);grad(sFill,C.Cyan,C.Purple,0)
-    local root=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(340,140),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,Parent=gui})
+    local root=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(340,140),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,ZIndex=101,Parent=gui})
     corner(root,6);stroke(root,C.Cyan,1,0.4);techCorners(root,C.Cyan,14,2,0.1)
     local scale=fitScale(root,340,40,0.65)
     local header=new("Frame",{Size=UD.new(1,0,0,26),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root})
@@ -786,7 +919,7 @@ local function runLoadScreen()
     end)
     pNameLbl.Text=LP.Name
     uidLbl.Text="UID "..LP.UserId
-    local okCard=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(320,110),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,Parent=gui})
+    local okCard=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(320,110),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,ZIndex=101,Parent=gui})
     corner(okCard,6);stroke(okCard,C.Green,1,0.35);techCorners(okCard,C.Green,12,2,0.15)
     local okScale=new("UIScale",{Scale=0.9,Parent=okCard})
     local pulseOuter=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromOffset(46,42),Size=UD.fromOffset(42,42),BackgroundTransparency=1,Parent=okCard})
@@ -803,7 +936,7 @@ local function runLoadScreen()
         root:FindFirstChildOfClass("UIStroke").Color=accent;pctLbl.TextColor3=accent
         local so=spinOut:FindFirstChildOfClass("UIStroke");if so then so.Color=accent end
         spinOutDot.BackgroundColor3=accent;spinCore.BackgroundColor3=accent;barFill.BackgroundColor3=accent
-        scale.Scale=0.9;tw(scale,0.35,{Scale=1},Enum.EasingStyle.Back);task.wait(0.12)
+        scale.Scale=0.82;tw(scale,0.55,{Scale=1},Enum.EasingStyle.Back);task.wait(0.14)
         local a1,a2=0,0
         local c1=RunService.RenderStepped:Connect(function(dt) a1=a1+dt*300;a2=a2-dt*200;spinOut.Rotation=a1;spinMid.Rotation=a2 end)
         local acc=0
@@ -816,33 +949,40 @@ local function runLoadScreen()
         task.wait(dur);c3:Disconnect()
         barFill.Size=UD.new(1,0,1,0);pctLbl.Text="  100%"
         task.wait(0.2);c1:Disconnect();c2:Disconnect()
-        tw(scale,0.2,{Scale=0.9});task.wait(0.22);root.Visible=false
+        tw(scale,0.32,{Scale=0.9},Enum.EasingStyle.Back);task.wait(0.34);root.Visible=false
     end
-    tw(mask,0.5,{BackgroundTransparency=0.4})
+    task.wait(0.1)
     local aS=makeAlpha(splash)
-    splash.Visible=true;splashScale.Scale=0.88;aS.set(1)
-    tw(splashScale,0.4,{Scale=1},Enum.EasingStyle.Back);aS.tweenTo(0,0.4)
+    splash.Visible=true;splashScale.Scale=0.78;aS.set(1)
+    tw(splashScale,0.7,{Scale=1},Enum.EasingStyle.Back)
+    aS.tweenTo(0,0.7)
+    task.wait(0.95)
+    tw(mask,1.8,{BackgroundTransparency=0.35},Enum.EasingStyle.Quart)
     local a=0
     local sC=RunService.RenderStepped:Connect(function(dt) a=a+dt*90;oRing.Rotation=a;mRing.Rotation=-a*0.7 end)
     local t0=os.clock()
     local bC=RunService.RenderStepped:Connect(function()
-        local t=math.clamp((os.clock()-t0)/1.3,0,1);sFill.Size=UD.new(1-(1-t)^2,0,1,0)
+        local t=math.clamp((os.clock()-t0)/1.8,0,1);sFill.Size=UD.new(1-(1-t)^2,0,1,0)
     end)
-    task.wait(1.4);bC:Disconnect();sC:Disconnect()
-    aS.tweenTo(1,0.28);task.wait(0.3);splash.Visible=false;splash:Destroy()
-    task.wait(0.3)
+    task.wait(1.9);bC:Disconnect();sC:Disconnect()
+    aS.tweenTo(1,0.42);task.wait(0.45);splash.Visible=false;splash:Destroy()
+    task.wait(0.4)
     runLoader("正在注入脚本核心...","INJECT  CORE",C.Cyan,1.6)
     task.wait(0.12)
     runLoader("正在加载功能模块...","LOAD  FEATURES",C.Purple,1.4)
     task.wait(0.12)
     local aO=makeAlpha(okCard)
-    okCard.Visible=true;okScale.Scale=0.85;aO.set(1)
-    tw(okScale,0.38,{Scale=1},Enum.EasingStyle.Back);aO.tweenTo(0,0.38)
+    okCard.Visible=true;okScale.Scale=0.8;aO.set(1)
+    tw(okScale,0.6,{Scale=1},Enum.EasingStyle.Back);aO.tweenTo(0,0.6)
     local pC=RunService.RenderStepped:Connect(function(dt) pulseOuter.Rotation=pulseOuter.Rotation+dt*200 end)
     task.wait(1.6);pC:Disconnect()
-    aO.tweenTo(1,0.26);task.wait(0.28)
+    aO.tweenTo(1,0.35);task.wait(0.37)
     okCard.Visible=false;okCard:Destroy();root:Destroy()
-    tw(mask,0.55,{BackgroundTransparency=1});task.wait(0.5);gui:Destroy()
+    tw(mask,0.8,{BackgroundTransparency=1},Enum.EasingStyle.Quart)
+    tw(scene,0.8,{BackgroundTransparency=1},Enum.EasingStyle.Quart)
+    task.wait(0.82)
+    if animConn then animConn:Disconnect();animConn=nil end
+    gui:Destroy()
 end
 if State.LoadScreenEnabled then runLoadScreen() end
 local function buildUI()
@@ -887,11 +1027,11 @@ local function buildUI()
     local tabHighlight=new("Frame",{Position=UD.fromOffset(0,23),Size=UD.new(1/tabCount,0,0,2),BackgroundColor3=C.Cyan,BorderSizePixel=0,Parent=tabBar})
     grad(tabHighlight,C.Cyan,C.Purple,0)
     for i,name in ipairs(tabs) do tabBtns[i]=new("TextButton",{Position=UD.new((i-1)/tabCount,0,0,0),Size=UD.new(1/tabCount,0,1,0),BackgroundTransparency=1,Text=name,TextColor3=(i==1) and C.Text or C.Dim,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Center,Parent=tabBar}) end
-    local content=new("Frame",{Position=UD.new(0,0,0,58),Size=UD.new(1,0,1,-84),BackgroundTransparency=1,Parent=main})
+    local content=new("Frame",{Position=UD.new(0,0,0,58),Size=UD.new(1,0,1,-84),BackgroundTransparency=1,ClipsDescendants=true,Parent=main})
     local pages={}
-    local pageCanvas={220,420,420,620,190,560}
+    local pageCanvas={300,400,420,620,190,560}
     for i=1,tabCount do
-        pages[i]=new("ScrollingFrame",{Size=UD.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=C.Cyan,CanvasSize=UD.new(0,0,0,pageCanvas[i] or 300),ScrollingDirection=Enum.ScrollingDirection.Y,Visible=(i==1),Parent=content})
+        pages[i]=new("ScrollingFrame",{Position=UD.new(0,0,0,0),Size=UD.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=C.Cyan,CanvasSize=UD.new(0,0,0,pageCanvas[i] or 300),ScrollingDirection=Enum.ScrollingDirection.Y,Visible=(i==1),Parent=content})
     end
     local resetToggles={}
     local resetSliders={}
@@ -912,15 +1052,19 @@ local function buildUI()
         local on=default or false
         local function setOn(v)
             on=v
-            tw(knob,0.18,{Position=on and UD.new(0,16,.5,0) or UD.new(0,2,.5,0),BackgroundColor3=on and accent or C.Dim},Enum.EasingStyle.Back)
+            tw(knob,0.28,{Position=on and UD.new(0,16,.5,0) or UD.new(0,2,.5,0),BackgroundColor3=on and accent or C.Dim},Enum.EasingStyle.Back)
             ts.Color=on and accent or C.Line;ts.Transparency=on and 0.2 or 0.6
-            tw(bar,0.15,{BackgroundColor3=on and accent or C.Line})
+            tw(bar,0.22,{BackgroundColor3=on and accent or C.Line})
             dl.TextColor3=on and accent or C.Dim
-            tw(row,0.15,{BackgroundTransparency=on and 0.3 or 0.15})
+            tw(row,0.22,{BackgroundTransparency=on and 0.3 or 0.15})
             if cb then cb(on) end
         end
         if on then knob.Position=UD.new(0,16,.5,0);knob.BackgroundColor3=accent;ts.Color=accent;ts.Transparency=0.2;bar.BackgroundColor3=accent;dl.TextColor3=accent;row.BackgroundTransparency=0.3 end
-        hit.Activated:Connect(function() setOn(not on) end)
+        hit.Activated:Connect(function()
+            tw(knob,0.08,{Size=UD.fromOffset(15,15)},Enum.EasingStyle.Back)
+            tw(knob,0.22,{Size=UD.fromOffset(12,12)},Enum.EasingStyle.Back)
+            setOn(not on)
+        end)
         if not noReset then table.insert(resetToggles,setOn) end
         return setOn,dl
     end
@@ -952,12 +1096,24 @@ local function buildUI()
             local pp=math.clamp((input.Position.X-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
             local v=rnd(minV+pp*(maxV-minV))
             local pp2=(v-minV)/(maxV-minV)
-            fill.Size=UD.new(pp2,0,1,0);dot.Position=UD.new(pp2,0,.5,0);vb.Text=fmt(v)
+            tw(fill,0.14,{Size=UD.new(pp2,0,1,0)},Enum.EasingStyle.Quint)
+            tw(dot,0.14,{Position=UD.new(pp2,0,.5,0)},Enum.EasingStyle.Quint)
+            vb.Text=fmt(v)
             if cb then cb(v) end
         end
-        hit.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=true;upd(input) end end)
+        hit.InputBegan:Connect(function(input)
+            if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+                dragging=true;upd(input)
+                tw(dot,0.18,{Size=UD.fromOffset(15,15)},Enum.EasingStyle.Back)
+            end
+        end)
         UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then upd(input) end end)
-        UserInputService.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+                if dragging then tw(dot,0.24,{Size=UD.fromOffset(11,11)},Enum.EasingStyle.Back) end
+                dragging=false
+            end
+        end)
         vb.FocusLost:Connect(function()
             local n=tonumber((vb.Text:gsub("[^%d%.%-]","")))
             if n then setV(n,true) else setV(defV,false) end
@@ -980,6 +1136,8 @@ local function buildUI()
                 local old=cur;cur=i
                 local os_=btns[old]:FindFirstChildOfClass("UIStroke");if os_ then os_.Color=C.Line;os_.Transparency=0.6 end
                 local ns=btns[i]:FindFirstChildOfClass("UIStroke");if ns then ns.Color=accent;ns.Transparency=0 end
+                tw(b,0.18,{Size=UD.fromOffset(bw+3,bw+3)},Enum.EasingStyle.Back)
+                tw(b,0.26,{Size=UD.fromOffset(bw,bw)},Enum.EasingStyle.Back)
                 if cb then cb(c.Color) end
             end)
         end
@@ -1008,31 +1166,22 @@ local function buildUI()
             btn.BackgroundColor3=v and C.Red or accent
             btn.TextColor3=v and C.Text or C.Bg
         end
-        btn.MouseEnter:Connect(function() if not active then tw(btn,0.15,{BackgroundTransparency=0.15}) end end)
-        btn.MouseLeave:Connect(function() if not active then tw(btn,0.15,{BackgroundTransparency=0}) end end)
+        btn.MouseEnter:Connect(function() if not active then tw(btn,0.18,{BackgroundTransparency=0.15}) end end)
+        btn.MouseLeave:Connect(function() if not active then tw(btn,0.18,{BackgroundTransparency=0}) end end)
         btn.Activated:Connect(function()
-            tw(btn,0.06,{Size=UD.fromOffset(56,20)});tw(btn,0.14,{Size=UD.fromOffset(60,22)})
+            tw(btn,0.08,{Size=UD.fromOffset(56,20)},Enum.EasingStyle.Back)
+            tw(btn,0.22,{Size=UD.fromOffset(60,22)},Enum.EasingStyle.Back)
             if cb then cb(setActive,active) end
         end)
         return setActive
     end
-    local function makeBigBtn(parent,y,text,accent,cb)
-        local btn=new("TextButton",{Position=UD.fromOffset(10,y),Size=UD.new(1,-20,0,50),BackgroundColor3=C.Panel,BackgroundTransparency=0.15,BorderSizePixel=0,Text="",AutoButtonColor=false,Parent=parent})
-        corner(btn,6);stroke(btn,accent,1,0.35)
-        local bar=new("Frame",{Position=UD.fromOffset(0,10),Size=UD.fromOffset(3,30),BackgroundColor3=accent,BorderSizePixel=0,Parent=btn})
-        corner(bar,1.5)
-        new("TextLabel",{Position=UD.fromOffset(14,0),Size=UD.new(1,-20,1,0),BackgroundTransparency=1,Text=text,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,Parent=btn})
-        btn.MouseEnter:Connect(function() tw(btn,0.15,{BackgroundTransparency=0.3}) end)
-        btn.MouseLeave:Connect(function() tw(btn,0.15,{BackgroundTransparency=0.15}) end)
-        btn.Activated:Connect(function()
-            tw(btn,0.08,{BackgroundColor3=accent});task.wait(0.1);tw(btn,0.2,{BackgroundColor3=C.Panel})
-            if cb then cb() end
-        end)
-    end
     local function showPlayerSelect(cb)
-        local overlay=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=100,Parent=gui})
+        local overlay=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,BorderSizePixel=0,ZIndex=100,Parent=gui})
+        tw(overlay,0.24,{BackgroundTransparency=0.5},Enum.EasingStyle.Quart)
         local list=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(220,240),BackgroundColor3=C.Bg,BorderSizePixel=0,ZIndex=101,Parent=overlay})
         corner(list,6);stroke(list,C.Cyan,1,0.3)
+        local listScale=new("UIScale",{Scale=0.82,Parent=list})
+        tw(listScale,0.36,{Scale=1},Enum.EasingStyle.Back)
         local header=new("Frame",{Size=UD.new(1,0,0,28),BackgroundColor3=C.Panel,BorderSizePixel=0,ZIndex=102,Parent=list})
         corner(header,6)
         new("TextLabel",{Position=UD.fromOffset(10,0),Size=UD.new(1,-40,1,0),BackgroundTransparency=1,Text="选择玩家",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=103,Parent=header})
@@ -1045,8 +1194,8 @@ local function buildUI()
                 local btn=new("TextButton",{Size=UD.new(1,-8,0,26),BackgroundColor3=C.Panel,BackgroundTransparency=0.15,BorderSizePixel=0,Text="",AutoButtonColor=false,ZIndex=103,Parent=scroll})
                 corner(btn,4);stroke(btn,C.Line,1,0.5)
                 new("TextLabel",{Position=UD.fromOffset(8,0),Size=UD.new(1,-8,1,0),BackgroundTransparency=1,Text=plr.Name,TextColor3=C.Text,Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=104,Parent=btn})
-                btn.MouseEnter:Connect(function() tw(btn,0.12,{BackgroundTransparency=0.3}) end)
-                btn.MouseLeave:Connect(function() tw(btn,0.12,{BackgroundTransparency=0.15}) end)
+                btn.MouseEnter:Connect(function() tw(btn,0.14,{BackgroundTransparency=0.3}) end)
+                btn.MouseLeave:Connect(function() tw(btn,0.14,{BackgroundTransparency=0.15}) end)
                 btn.Activated:Connect(function() cb(plr);overlay:Destroy() end)
             end
         end
@@ -1076,14 +1225,14 @@ local function buildUI()
         end)
         local rb=new("TextButton",{Position=UD.fromOffset(10,80),Size=UD.new(1,-20,0,26),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text="重置所有功能",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false,Parent=p})
         corner(rb,5);stroke(rb,C.Line,1,0.5)
-        rb.MouseEnter:Connect(function() tw(rb,0.15,{BackgroundColor3=C.Panel}) end)
-        rb.MouseLeave:Connect(function() tw(rb,0.15,{BackgroundColor3=C.Panel2}) end)
+        rb.MouseEnter:Connect(function() tw(rb,0.16,{BackgroundColor3=C.Panel}) end)
+        rb.MouseLeave:Connect(function() tw(rb,0.16,{BackgroundColor3=C.Panel2}) end)
         rb.Activated:Connect(function()
             for _,s in ipairs(resetToggles) do s(false) end
             for _,s in ipairs(resetSliders) do s.fn(s.default) end
             for _,r in ipairs(resetColors) do r() end
             closeAllFeatures()
-            tw(rb,0.08,{BackgroundColor3=C.Green});tw(rb,0.2,{BackgroundColor3=C.Panel2})
+            tw(rb,0.08,{BackgroundColor3=C.Green});tw(rb,0.24,{BackgroundColor3=C.Panel2},Enum.EasingStyle.Back)
         end)
         makeToggle(p,116,"启动加载界面","LOAD SCREEN",C.Cyan,State.LoadScreenEnabled,function(on) State.LoadScreenEnabled=on;_G.VoidConfig.LoadScreenEnabled=on end,true)
         makeActionBtn(p,160,"TX Script","全自动翻译",C.Green,"启动",function()
@@ -1094,6 +1243,8 @@ local function buildUI()
             end)
             if not ok then notify("TX Script","加载失败: "..tostring(err)) end
         end)
+        makeToggle(p,204,"屏幕防误触","LOCK  EDGE  TOUCH",C.Red,false,function(on) setGuardEnabled(on) end)
+        makeSlider(p,244,"防误触范围",C.Red,0,200,GuardZones.Size," px",0,function(v) flashGuardZones(v) end)
     end
     do
         local p=pages[2]
@@ -1213,14 +1364,19 @@ local function buildUI()
     local function switchTab(idx)
         if idx==currentTab then return end
         tabBtns[currentTab].TextColor3=C.Dim;tabBtns[idx].TextColor3=C.Text
-        pages[currentTab].Visible=false;pages[idx].Visible=true
-        tw(tabHighlight,0.22,{Position=UD.fromOffset((idx-1)/tabCount*WIN_W,23)})
+        local oldPage=pages[currentTab]
+        local newPage=pages[idx]
+        oldPage.Visible=false
+        newPage.Visible=true
+        newPage.Position=UD.new(0,18,0,0)
+        tw(newPage,0.42,{Position=UD.new(0,0,0,0)},Enum.EasingStyle.Back)
+        tw(tabHighlight,0.34,{Position=UD.fromOffset((idx-1)/tabCount*WIN_W,23)},Enum.EasingStyle.Back)
         currentTab=idx
     end
     for i,b in ipairs(tabBtns) do
         b.Activated:Connect(function() switchTab(i) end)
-        b.MouseEnter:Connect(function() if i~=currentTab then tw(b,0.15,{TextColor3=C.Text}) end end)
-        b.MouseLeave:Connect(function() if i~=currentTab then tw(b,0.15,{TextColor3=C.Dim}) end end)
+        b.MouseEnter:Connect(function() if i~=currentTab then tw(b,0.18,{TextColor3=C.Text}) end end)
+        b.MouseLeave:Connect(function() if i~=currentTab then tw(b,0.18,{TextColor3=C.Dim}) end end)
     end
     local sb=new("Frame",{Position=UD.new(0,1,-24),Size=UD.new(1,0,0,24),BackgroundColor3=C.Panel,BackgroundTransparency=0.35,BorderSizePixel=0,Parent=main})
     corner(sb,8)
@@ -1252,30 +1408,32 @@ local function buildUI()
         mini.Visible=false
         main.Position=mainHomePos
         main.Visible=true
-        mainScale.Scale=0.86
-        tw(mainScale,0.3,{Scale=1},Enum.EasingStyle.Back)
+        mainScale.Scale=0.72
+        tw(mainScale,0.55,{Scale=1},Enum.EasingStyle.Back)
     end)
     makeDraggable(main,dragHandle)
     minBtn.Activated:Connect(function()
-        tw(minBtn,0.08,{BackgroundColor3=C.Cyan});tw(minBtn,0.15,{BackgroundColor3=C.Panel2})
+        tw(minBtn,0.08,{BackgroundColor3=C.Cyan});tw(minBtn,0.2,{BackgroundColor3=C.Panel2})
         main.Visible=false
+        mainScale.Scale=1
         mini.Position=UD.fromOffset(CAM.ViewportSize.X-MINI-20,CAM.ViewportSize.Y*0.4)
         miniHomePos=mini.Position
         mini.Visible=true
-        msc.Scale=0.4
-        tw(msc,0.35,{Scale=1},Enum.EasingStyle.Back)
+        msc.Scale=0.3
+        tw(msc,0.5,{Scale=1},Enum.EasingStyle.Back)
     end)
     closeBtn.Activated:Connect(function()
         tw(closeBtn,0.08,{BackgroundColor3=C.Red})
-        tw(mainScale,0.18,{Scale=0.85});tw(main,0.18,{BackgroundTransparency=1})
-        task.wait(0.2)
+        tw(mainScale,0.26,{Scale=0.8},Enum.EasingStyle.Back)
+        task.wait(0.28)
         mini.Visible=false;main.Visible=false
+        mainScale.Scale=1
         closeAllFeatures()
         task.wait(0.05)
         gui:Destroy()
     end)
-    main.Visible=true;mainScale.Scale=0.86
-    tw(mainScale,0.38,{Scale=1},Enum.EasingStyle.Back)
+    main.Visible=true;mainScale.Scale=0.78
+    tw(mainScale,0.6,{Scale=1},Enum.EasingStyle.Back)
     task.spawn(function()
         while main.Parent do
             local p2=(math.sin(os.clock()*2)+1)/2
