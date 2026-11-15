@@ -13,7 +13,7 @@ local PG=LP:WaitForChild("PlayerGui")
 local CAM=workspace.CurrentCamera
 local UD=UDim2
 
--- ===== 持久化（文件 > Attribute > _G） =====
+-- ===== 持久化 =====
 local Persist={}
 local PERSIST_FILE="VoidV4_Config.json"
 local _store=nil
@@ -52,8 +52,9 @@ function Persist.clear()
 end
 
 -- ===== 主题系统 =====
+local DEFAULT_BG_IMG="rbxassetid://131769990624851"
 local AppThemes={
-    default={Name="默认",Bg=Color3.fromRGB(14,5,28),BgTop=Color3.fromRGB(31,30,45),Surface=Color3.fromRGB(24,12,45),SurfaceHover=Color3.fromRGB(44,44,62),Track=Color3.fromRGB(48,48,68),Stroke=Color3.fromRGB(70,40,110),Text=Color3.fromRGB(230,215,255),SubText=Color3.fromRGB(150,150,180),Accent=Color3.fromRGB(180,100,255),AccentSoft=Color3.fromRGB(162,136,255),Border=true,BgImage=""},
+    default={Name="默认",Bg=Color3.fromRGB(14,5,28),BgTop=Color3.fromRGB(31,30,45),Surface=Color3.fromRGB(24,12,45),SurfaceHover=Color3.fromRGB(44,44,62),Track=Color3.fromRGB(48,48,68),Stroke=Color3.fromRGB(70,40,110),Text=Color3.fromRGB(230,215,255),SubText=Color3.fromRGB(150,150,180),Accent=Color3.fromRGB(180,100,255),AccentSoft=Color3.fromRGB(162,136,255),Border=true,BgImage=DEFAULT_BG_IMG},
     black={Name="黑色",Bg=Color3.fromRGB(12,12,12),BgTop=Color3.fromRGB(24,24,24),Surface=Color3.fromRGB(28,28,28),SurfaceHover=Color3.fromRGB(44,44,44),Track=Color3.fromRGB(48,48,48),Stroke=Color3.fromRGB(64,64,64),Text=Color3.fromRGB(242,242,242),SubText=Color3.fromRGB(152,152,152),Accent=Color3.fromRGB(228,228,228),AccentSoft=Color3.fromRGB(200,200,200),Border=true,BgImage=""},
     purple={Name="紫色",Bg=Color3.fromRGB(19,19,27),BgTop=Color3.fromRGB(31,30,45),Surface=Color3.fromRGB(31,31,44),SurfaceHover=Color3.fromRGB(44,44,62),Track=Color3.fromRGB(48,48,68),Stroke=Color3.fromRGB(58,58,84),Text=Color3.fromRGB(238,238,248),SubText=Color3.fromRGB(150,150,180),Accent=Color3.fromRGB(124,108,255),AccentSoft=Color3.fromRGB(162,136,255),Border=true,BgImage=""},
     blue={Name="蓝色",Bg=Color3.fromRGB(10,18,32),BgTop=Color3.fromRGB(20,32,52),Surface=Color3.fromRGB(20,32,54),SurfaceHover=Color3.fromRGB(34,50,76),Track=Color3.fromRGB(38,54,82),Stroke=Color3.fromRGB(54,82,122),Text=Color3.fromRGB(230,240,255),SubText=Color3.fromRGB(140,170,210),Accent=Color3.fromRGB(65,145,255),AccentSoft=Color3.fromRGB(120,180,255),Border=true,BgImage=""},
@@ -76,7 +77,7 @@ end
 local function getActiveTheme()
     if AppTheme.Preset=="custom" then
         local c=AppTheme.Custom
-        return {Name="自定义",Bg=c.Background,BgTop=c.Background:Lerp(Color3.new(1,1,1),0.06),Surface=c.Background:Lerp(Color3.new(1,1,1),0.09),SurfaceHover=c.Background:Lerp(Color3.new(1,1,1),0.18),Track=c.Background:Lerp(Color3.new(1,1,1),0.13),Stroke=c.BorderColor,Text=c.Text,SubText=c.Text:Lerp(c.Background,0.42),Accent=c.Accent,AccentSoft=c.Accent:Lerp(Color3.new(1,1,1),0.25),Border=c.Border,BgImage=c.BgImage}
+        return {Name="自定义",Bg=c.Background,BgTop=c.Background:Lerp(Color3.new(1,1,1),0.06),Surface=c.Background:Lerp(Color3.new(1,1,1),0.09),SurfaceHover=c.Background:Lerp(Color3.new(1,1,1),0.18),Track=c.Background:Lerp(Color3.new(1,1,1),0.13),Stroke=c.BorderColor,Text=c.Text,SubText=c.Text:Lerp(c.Background,0.42),Accent=c.Accent,AccentSoft=c.Accent:Lerp(Color3.new(1,1,1),0.25),Border=c.Border,BgImage=c.BgImage or ""}
     end
     return AppThemes[AppTheme.Preset] or AppThemes.default
 end
@@ -85,13 +86,15 @@ local function saveAppTheme()
     local c=AppTheme.Custom
     Persist.set("AppThemeCustom",{Background=colToArr(c.Background),Text=colToArr(c.Text),Accent=colToArr(c.Accent),BorderColor=colToArr(c.BorderColor),Border=c.Border,BgImage=c.BgImage})
 end
-local function getThemeBgImage() local t=getActiveTheme() if type(t.BgImage)=="string" and t.BgImage~="" then return t.BgImage end return "rbxassetid://131769990624851" end
+local function getThemeBgImage()
+    local t=getActiveTheme()
+    return (type(t.BgImage)=="string") and t.BgImage or ""
+end
 
 -- 从主题派生颜色表
 local C={Void=Color3.fromRGB(6,2,16),BarBg=Color3.fromRGB(30,18,50),Green=Color3.fromRGB(160,220,255),Red=Color3.fromRGB(255,70,120)}
 do local t=getActiveTheme() C.Bg=t.Bg C.Panel=t.Surface C.Panel2=t.SurfaceHover C.Line=t.Stroke C.Cyan=t.Accent C.Purple=t.AccentSoft C.Text=t.Text C.Dim=t.SubText end
 
--- ===== 基础配置 =====
 local UI_STYLE=Persist.get("UIStyle","zvm")
 local LOAD_SCREEN=Persist.get("LoadScreenEnabled",true)
 local BASE_JUMP=50
@@ -116,7 +119,6 @@ local function corner(p,r) return new("UICorner",{CornerRadius=UDim.new(0,r),Par
 local function stroke(p,c,t,tr) return new("UIStroke",{Color=c,Thickness=t or 1,Transparency=tr or 0,ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Parent=p}) end
 local function grad(p,a,b,r) return new("UIGradient",{Color=ColorSequence.new(a,b),Rotation=r or 0,Parent=p}) end
 local function tw(i,d,p,s,dr) local t=TweenService:Create(i,TweenInfo.new(d,s or Enum.EasingStyle.Quad,dr or Enum.EasingDirection.Out),p) t:Play() return t end
-local function hex(n) local s="" for _=1,n do s=s..string.format("%X",math.random(0,15)) end return s end
 local function diamond(parent,x,y,sz,color,tr) local d=new("Frame",{Position=UD.fromOffset(x,y),Size=UD.fromOffset(sz,sz),BackgroundColor3=color,BackgroundTransparency=tr or 0,BorderSizePixel=0,Rotation=45,Parent=parent}) corner(d,2) return d end
 local function ring(parent,sz,color,t,tr) local f=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(sz,sz),BackgroundTransparency=1,Parent=parent}) corner(f,sz/2) stroke(f,color,t,tr) return f end
 local function fitScale(g,bw,pd,mn) local s=g:FindFirstChildOfClass("UIScale") or new("UIScale",{Scale=1,Parent=g}) local function u() s.Scale=math.clamp((CAM.ViewportSize.X-(pd or 40))/bw,mn or .6,1) end u() CAM:GetPropertyChangedSignal("ViewportSize"):Connect(u) return s end
@@ -849,10 +851,6 @@ local function runLoadScreen()
     local deepBg=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=Color3.fromRGB(10,3,22),BorderSizePixel=0,ZIndex=1,Parent=scene})
     local deepG=grad(deepBg,Color3.fromRGB(18,6,40),Color3.fromRGB(2,0,8),90)
     deepG.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0.35)})
-    local galaxyRoot=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(2.1,.65),BackgroundTransparency=1,BorderSizePixel=0,Rotation=-22,ZIndex=2,Parent=scene})
-    local band1=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(1,1),BackgroundColor3=Color3.fromRGB(90,40,180),BackgroundTransparency=0.8,BorderSizePixel=0,Parent=galaxyRoot}) corner(band1,400)
-    local band2=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(.82,.5),BackgroundColor3=Color3.fromRGB(150,90,240),BackgroundTransparency=0.72,BorderSizePixel=0,Parent=galaxyRoot}) corner(band2,400)
-    local band3=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromScale(.58,.24),BackgroundColor3=Color3.fromRGB(220,190,255),BackgroundTransparency=0.7,BorderSizePixel=0,Parent=galaxyRoot}) corner(band3,400)
     local stars={}
     for i=1,80 do
         local sz=math.random(1,3) local cval=math.random(180,255)
@@ -860,17 +858,6 @@ local function runLoadScreen()
         corner(s,sz)
         table.insert(stars,{inst=s,phase=math.random()*math.pi*2,speed=math.random(10,40)/10,baseAlpha=s.BackgroundTransparency,driftY=math.random(2,7)/10})
     end
-    local planets={}
-    local function addPlanet(x,y,sz,c1,c2,rotSpd,floatAmp,floatSpd)
-        local p=new("Frame",{Position=UD.fromOffset(x,y),Size=UD.fromOffset(sz,sz),BackgroundColor3=c1,BorderSizePixel=0,ZIndex=3,Parent=scene}) corner(p,sz)
-        local pg=grad(p,c1,c2,45) stroke(p,c2,1.2,0.35)
-        local moonSz=math.max(4,math.floor(sz*0.14))
-        local moon=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(moonSz,moonSz),BackgroundColor3=Color3.fromRGB(230,220,255),BorderSizePixel=0,ZIndex=4,Parent=p}) corner(moon,moonSz)
-        table.insert(planets,{inst=p,grad=pg,moon=moon,baseX=x,baseY=y,floatAmp=floatAmp,floatSpd=floatSpd,rot=0,rotSpd=rotSpd,phase=math.random()*math.pi*2})
-    end
-    addPlanet(60,100,90,Color3.fromRGB(120,60,200),Color3.fromRGB(40,15,80),10,7,0.6)
-    addPlanet(1050,530,140,Color3.fromRGB(180,80,220),Color3.fromRGB(60,20,100),-6,12,0.42)
-    addPlanet(880,80,50,Color3.fromRGB(150,120,255),Color3.fromRGB(60,40,140),14,5,0.85)
     local animConn=RunService.RenderStepped:Connect(function(dt)
         if not gui or not gui.Parent then if animConn then animConn:Disconnect() animConn=nil end return end
         local t=os.clock()
@@ -882,19 +869,6 @@ local function runLoadScreen()
                 local pos=inst.Position local ny=pos.Y.Offset-s.driftY*dt*40
                 if ny<-20 then ny=1220 end
                 inst.Position=UD.new(pos.X.Scale,pos.X.Offset,pos.Y.Scale,ny)
-            end
-        end
-        for _,p in ipairs(planets) do
-            local inst=p.inst
-            if inst and inst.Parent then
-                p.phase=p.phase+dt*p.floatSpd
-                local fy=math.sin(p.phase)*p.floatAmp local fx=math.cos(p.phase*0.7)*p.floatAmp*0.6
-                inst.Position=UD.new(0,p.baseX+fx,0,p.baseY+fy)
-                p.rot=p.rot+dt*p.rotSpd p.grad.Rotation=p.rot
-                if p.moon and p.moon.Parent then
-                    local ang=t*p.rotSpd*math.pi/180
-                    p.moon.Position=UD.new(0.5+math.cos(ang)*0.62,0,0.5+math.sin(ang)*0.62,0)
-                end
             end
         end
     end)
@@ -911,48 +885,6 @@ local function runLoadScreen()
     new("TextLabel",{Position=UD.new(0,0,0,86),Size=UD.new(1,0,0,12),BackgroundTransparency=1,Text="V4  INITIALIZING",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,Parent=splash})
     local sBar=new("Frame",{AnchorPoint=Vector2.new(.5,0),Position=UD.new(.5,0,0,106),Size=UD.fromOffset(180,3),BackgroundColor3=C.Panel2,BorderSizePixel=0,Parent=splash}) corner(sBar,2)
     local sFill=new("Frame",{Size=UD.new(0,0,1,0),BackgroundColor3=C.Cyan,BorderSizePixel=0,Parent=sBar}) corner(sFill,2) grad(sFill,C.Cyan,C.Purple,0)
-    local root=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(340,140),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,ZIndex=101,Parent=gui})
-    corner(root,6) stroke(root,C.Cyan,1,0.4)
-    local scale=fitScale(root,340,40,0.65)
-    local header=new("Frame",{Size=UD.new(1,0,0,26),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root}) corner(header,6)
-    new("Frame",{Position=UD.new(0,0,0,20),Size=UD.new(1,0,0,6),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root})
-    diamond(header,10,8,10,C.Cyan,0)
-    new("TextLabel",{Position=UD.fromOffset(26,0),Size=UD.new(1,-90,1,0),BackgroundTransparency=1,Text="VOID  //  V4  INJECTION",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,Parent=header})
-    local pArea=new("Frame",{Position=UD.fromOffset(12,36),Size=UD.fromOffset(96,94),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root}) corner(pArea,5) stroke(pArea,C.Line,1,0.5)
-    local avBox=new("Frame",{AnchorPoint=Vector2.new(.5,0),Position=UD.new(.5,0,0,8),Size=UD.fromOffset(48,48),BackgroundTransparency=1,Parent=pArea})
-    local avRing=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(48,48),BackgroundTransparency=1,Parent=avBox}) corner(avRing,24) stroke(avRing,C.Cyan,1.2,0.3)
-    local avImg=new("ImageLabel",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(40,40),BackgroundColor3=C.Panel2,BorderSizePixel=0,Image="",Parent=avBox}) corner(avImg,20) stroke(avImg,C.Line,1,0.3)
-    new("TextLabel",{Position=UD.fromOffset(4,60),Size=UD.new(1,-8,0,12),BackgroundTransparency=1,Text=LP.Name,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=9,TextTruncate=Enum.TextTruncate.AtEnd,Parent=pArea})
-    new("TextLabel",{Position=UD.fromOffset(4,74),Size=UD.new(1,-8,0,10),BackgroundTransparency=1,Text="UID "..LP.UserId,TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextTruncate=Enum.TextTruncate.AtEnd,Parent=pArea})
-    local lArea=new("Frame",{Position=UD.fromOffset(116,36),Size=UD.fromOffset(212,94),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root}) corner(lArea,5) stroke(lArea,C.Line,1,0.5)
-    local titleLbl=new("TextLabel",{Position=UD.fromOffset(58,10),Size=UD.new(1,-68,0,14),BackgroundTransparency=1,Text="正在注入...",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=lArea})
-    local subLbl=new("TextLabel",{Position=UD.fromOffset(58,26),Size=UD.new(1,-68,0,11),BackgroundTransparency=1,Text="INJECT  CORE",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=lArea})
-    local pctLbl=new("TextLabel",{Position=UD.fromOffset(58,40),Size=UD.new(1,-68,0,16),BackgroundTransparency=1,Text="  0%",TextColor3=C.Cyan,Font=Enum.Font.Code,TextSize=14,TextXAlignment=Enum.TextXAlignment.Left,Parent=lArea})
-    local barBg=new("Frame",{Position=UD.fromOffset(58,64),Size=UD.new(1,-68,0,5),BackgroundColor3=C.Panel2,BorderSizePixel=0,Parent=lArea}) corner(barBg,3)
-    local barFill=new("Frame",{Size=UD.new(0,0,1,0),BackgroundColor3=C.Cyan,BorderSizePixel=0,Parent=barBg}) corner(barFill,3) grad(barFill,C.Cyan,C.Purple,0)
-    task.spawn(function()
-        local ok,th=pcall(function() return Players:GetUserThumbnailAsync(LP.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size100x100) end)
-        if ok and th then avImg.Image=th end
-    end)
-    local okCard=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(320,110),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,ZIndex=101,Parent=gui})
-    corner(okCard,6) stroke(okCard,C.Green,1,0.35)
-    local okScale=new("UIScale",{Scale=0.9,Parent=okCard})
-    new("TextLabel",{Position=UD.fromOffset(80,26),Size=UD.new(1,-90,0,16),BackgroundTransparency=1,Text="脚本加载成功",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=13,TextXAlignment=Enum.TextXAlignment.Left,Parent=okCard})
-    new("TextLabel",{Position=UD.fromOffset(80,46),Size=UD.new(1,-90,0,32),BackgroundTransparency=1,Text="网络延迟可能导致脚本加载时间大幅度延长",TextColor3=C.Dim,Font=Enum.Font.Gotham,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true,Parent=okCard})
-    local function runLoader(title,sub,accent,dur)
-        root.Visible=true titleLbl.Text=title subLbl.Text=sub
-        root:FindFirstChildOfClass("UIStroke").Color=accent pctLbl.TextColor3=accent barFill.BackgroundColor3=accent
-        scale.Scale=0.82 tw(scale,0.55,{Scale=1},Enum.EasingStyle.Back) task.wait(0.14)
-        local t0=os.clock()
-        local c3=RunService.RenderStepped:Connect(function()
-            local t=math.clamp((os.clock()-t0)/dur,0,1) local e=1-(1-t)^2
-            barFill.Size=UD.new(e,0,1,0) pctLbl.Text=string.format("  %d%%",math.floor(e*100))
-        end)
-        task.wait(dur) c3:Disconnect()
-        barFill.Size=UD.new(1,0,1,0) pctLbl.Text="  100%"
-        task.wait(0.2)
-        tw(scale,0.32,{Scale=0.9},Enum.EasingStyle.Back) task.wait(0.34) root.Visible=false
-    end
     task.wait(0.1)
     local aS=makeAlpha(splash)
     splash.Visible=true splashScale.Scale=0.78 aS.set(1)
@@ -967,17 +899,6 @@ local function runLoadScreen()
     end)
     task.wait(1.9) bC:Disconnect() sC:Disconnect()
     aS.tweenTo(1,0.42) task.wait(0.45) splash.Visible=false splash:Destroy()
-    task.wait(0.4)
-    runLoader("正在注入脚本核心...","INJECT  CORE",C.Cyan,1.6)
-    task.wait(0.12)
-    runLoader("正在加载功能模块...","LOAD  FEATURES",C.Purple,1.4)
-    task.wait(0.12)
-    local aO=makeAlpha(okCard)
-    okCard.Visible=true okScale.Scale=0.8 aO.set(1)
-    tw(okScale,0.6,{Scale=1},Enum.EasingStyle.Back) aO.tweenTo(0,0.6)
-    task.wait(1.6)
-    aO.tweenTo(1,0.35) task.wait(0.37)
-    okCard.Visible=false okCard:Destroy() root:Destroy()
     tw(mask,0.7,{BackgroundTransparency=0},Enum.EasingStyle.Quart)
     task.wait(0.72)
     if animConn then animConn:Disconnect() animConn=nil end
@@ -988,8 +909,7 @@ end
 -- ZvmUI 库
 -- ============================================================
 local ZvmUI={}
-local PresetThemes={Purple={Accent=Color3.fromRGB(124,108,255),AccentSoft=Color3.fromRGB(162,136,255)}}
-local Theme={Background=Color3.fromRGB(19,19,27),BackgroundTop=Color3.fromRGB(31,30,45),Surface=Color3.fromRGB(31,31,44),SurfaceHover=Color3.fromRGB(44,44,62),Track=Color3.fromRGB(48,48,68),Accent=PresetThemes.Purple.Accent,AccentSoft=PresetThemes.Purple.AccentSoft,Text=Color3.fromRGB(238,238,248),SubText=Color3.fromRGB(150,150,180),Stroke=Color3.fromRGB(58,58,84)}
+local Theme={Background=Color3.fromRGB(19,19,27),BackgroundTop=Color3.fromRGB(31,30,45),Surface=Color3.fromRGB(31,31,44),SurfaceHover=Color3.fromRGB(44,44,62),Track=Color3.fromRGB(48,48,68),Accent=Color3.fromRGB(124,108,255),AccentSoft=Color3.fromRGB(162,136,255),Text=Color3.fromRGB(238,238,248),SubText=Color3.fromRGB(150,150,180),Stroke=Color3.fromRGB(58,58,84)}
 ZvmUI.Theme=Theme
 do
     local t=getActiveTheme()
@@ -1374,7 +1294,7 @@ function ZvmUI.CreateWindow(cfg)
     cCorner(main,18)
     local mainSt=cStroke(main,Theme.Stroke,1)
     if cfg.BorderEnabled==false then mainSt.Transparency=1 end
-    if cfg.Background then
+    if cfg.Background and cfg.Background~="" then
         local bg=Instance.new("ImageLabel")
         bg.Name="ZvmBg" bg.Size=UDim2.fromScale(1,1) bg.BackgroundTransparency=1
         bg.Image=cfg.Background bg.ImageTransparency=cfg.BackgroundTransparency or 0.35
@@ -1512,7 +1432,70 @@ function ZvmUI.CreateWindow(cfg)
 end
 
 -- ============================================================
--- ZvmUI 辅助
+-- 通用颜色选择弹窗（RGB 自由调节）
+-- ============================================================
+local function pickColor(parent, initC, themeTbl, onConfirm)
+    local T=themeTbl
+    local ov=new("TextButton",{Size=UD.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,Text="",AutoButtonColor=false,ZIndex=600,Parent=parent})
+    tw(ov,0.2,{BackgroundTransparency=0.55})
+    local box=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(280,340),BackgroundColor3=T.Surface,BorderSizePixel=0,ZIndex=601,Parent=ov})
+    corner(box,14) stroke(box,T.Stroke,1)
+    local bs=Instance.new("UIScale") bs.Scale=0.85 bs.Parent=box
+    tw(bs,0.3,{Scale=1},Enum.EasingStyle.Back)
+    new("TextLabel",{Position=UD.fromOffset(20,14),Size=UD.new(1,-40,0,30),BackgroundTransparency=1,Text="自定义颜色",TextColor3=T.Text,TextSize=15,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=602,Parent=box})
+    local cur={math.floor(initC.R*255+0.5),math.floor(initC.G*255+0.5),math.floor(initC.B*255+0.5)}
+    local preview=new("Frame",{Position=UD.fromOffset(20,52),Size=UD.fromOffset(240,44),BackgroundColor3=initC,BorderSizePixel=0,ZIndex=602,Parent=box})
+    corner(preview,8) stroke(preview,T.Stroke,1)
+    local hexLbl=new("TextLabel",{Position=UD.fromOffset(20,52),Size=UD.fromOffset(240,44),BackgroundTransparency=1,Text=string.format("#%02X%02X%02X",cur[1],cur[2],cur[3]),TextColor3=Color3.fromRGB(255,255,255),TextStrokeTransparency=0.3,Font=Enum.Font.Code,TextSize=13,ZIndex=603,Parent=box})
+    local function refresh()
+        preview.BackgroundColor3=Color3.fromRGB(cur[1],cur[2],cur[3])
+        hexLbl.Text=string.format("#%02X%02X%02X",cur[1],cur[2],cur[3])
+    end
+    local disc={}
+    local chans={{"R",Color3.fromRGB(255,80,80)},{"G",Color3.fromRGB(80,255,80)},{"B",Color3.fromRGB(80,80,255)}}
+    for i,ch in ipairs(chans) do
+        local y=112+(i-1)*56
+        local row=new("Frame",{Position=UD.fromOffset(20,y),Size=UD.new(1,-40,0,48),BackgroundTransparency=1,ZIndex=602,Parent=box})
+        new("TextLabel",{Position=UD.fromOffset(0,0),Size=UD.fromOffset(20,20),BackgroundTransparency=1,Text=ch[1],TextColor3=ch[2],TextSize=14,Font=Enum.Font.GothamBold,ZIndex=603,Parent=row})
+        local valLbl=new("TextLabel",{Position=UD.new(1,-46,0,0),Size=UD.fromOffset(46,20),BackgroundTransparency=1,Text=tostring(cur[i]),TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Right,ZIndex=603,Parent=row})
+        local track=new("Frame",{Position=UD.fromOffset(0,24),Size=UD.new(1,0,0,8),BackgroundColor3=T.Track,BorderSizePixel=0,ZIndex=603,Parent=row})
+        corner(track,4)
+        local fill=new("Frame",{Size=UD.fromScale(cur[i]/255,1),BackgroundColor3=ch[2],BorderSizePixel=0,ZIndex=604,Parent=track})
+        corner(fill,4)
+        local knob=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.new(cur[i]/255,0,.5,0),Size=UD.fromOffset(14,14),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=605,Parent=track})
+        corner(knob,7)
+        local dragging=false
+        local function setX(x)
+            local rel=math.clamp((x-track.AbsolutePosition.X)/math.max(track.AbsoluteSize.X,1),0,1)
+            cur[i]=math.floor(rel*255+0.5)
+            fill.Size=UD.fromScale(rel,1)
+            knob.Position=UD.new(rel,0,.5,0)
+            valLbl.Text=tostring(cur[i])
+            refresh()
+        end
+        local hit=new("TextButton",{Size=UD.fromScale(1,1),BackgroundTransparency=1,Text="",AutoButtonColor=false,ZIndex=606,Parent=track})
+        hit.InputBegan:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then dragging=true setX(inp.Position.X) end end)
+        local c1=UserInputService.InputChanged:Connect(function(inp) if dragging and (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) then setX(inp.Position.X) end end)
+        local c2=UserInputService.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+        table.insert(disc,{c1,c2})
+    end
+    local okBtn=new("TextButton",{Position=UD.fromOffset(150,290),Size=UD.fromOffset(110,32),BackgroundColor3=T.Accent,BorderSizePixel=0,Text="确定",TextColor3=T.Text,Font=Enum.Font.GothamBold,TextSize=13,AutoButtonColor=false,ZIndex=602,Parent=box})
+    corner(okBtn,8)
+    local noBtn=new("TextButton",{Position=UD.fromOffset(20,290),Size=UD.fromOffset(110,32),BackgroundColor3=T.BackgroundTop,BorderSizePixel=0,Text="取消",TextColor3=T.SubText,Font=Enum.Font.GothamBold,TextSize=13,AutoButtonColor=false,ZIndex=602,Parent=box})
+    corner(noBtn,8)
+    local function close()
+        for _,p in ipairs(disc) do p[1]:Disconnect() p[2]:Disconnect() end
+        tw(ov,0.2,{BackgroundTransparency=1}) tw(bs,0.2,{Scale=0.85})
+        task.delay(0.22,function() if ov then ov:Destroy() end end)
+    end
+    okBtn.MouseButton1Click:Connect(function() onConfirm(Color3.fromRGB(cur[1],cur[2],cur[3])) close() end)
+    noBtn.MouseButton1Click:Connect(close)
+    ov.MouseButton1Click:Connect(close)
+    return ov
+end
+
+-- ============================================================
+-- ZvmUI 辅助：玩家选择 / 颜色选择行
 -- ============================================================
 local function zvmPickPlayer(win,cb)
     local gui=win.Gui local ZT=ZvmUI.Theme
@@ -1534,33 +1517,28 @@ local function zvmPickPlayer(win,cb)
             new("TextLabel",{Size=UD.new(1,-16,1,0),Position=UD.fromOffset(8,0),BackgroundTransparency=1,Text=p.Name,TextColor3=ZT.Text,TextSize=13,Font=Enum.Font.GothamMedium,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=404,Parent=b})
             b.MouseEnter:Connect(function() b.BackgroundColor3=ZT.SurfaceHover end)
             b.MouseLeave:Connect(function() b.BackgroundColor3=ZT.BackgroundTop end)
-            b.MouseButton1Click:Connect(function()
-                cb(p) tw(ov,0.2,{BackgroundTransparency=1}) tw(bs,0.2,{Scale=0.85})
-                task.delay(0.22,function() ov:Destroy() end)
-            end)
+            b.MouseButton1Click:Connect(function() cb(p) tw(ov,0.2,{BackgroundTransparency=1}) tw(bs,0.2,{Scale=0.85}) task.delay(0.22,function() if ov then ov:Destroy() end end) end)
         end
     end
-    ov.MouseButton1Click:Connect(function() tw(ov,0.2,{BackgroundTransparency=1}) tw(bs,0.2,{Scale=0.85}) task.delay(0.22,function() ov:Destroy() end) end)
+    ov.MouseButton1Click:Connect(function() tw(ov,0.2,{BackgroundTransparency=1}) tw(bs,0.2,{Scale=0.85}) task.delay(0.22,function() if ov then ov:Destroy() end end) end)
 end
-local function zvmColorRow(win,text,colors,idx,cb)
+-- 通用颜色行：预览 + 编辑按钮
+local function zvmColorRow(win,text,curColor,cb)
     local ZT=ZvmUI.Theme
-    local row=new("Frame",{Size=UD.new(1,0,0,44),BackgroundColor3=ZT.Surface,BorderSizePixel=0,Parent=win.Content})
+    local row=new("Frame",{Size=UD.new(1,0,0,48),BackgroundColor3=ZT.Surface,BorderSizePixel=0,Parent=win.Content})
     corner(row,12) stroke(row,ZT.Stroke,1)
     win:_animate(row)
-    new("TextLabel",{Position=UD.fromOffset(16,0),Size=UD.new(1,-140,1,0),BackgroundTransparency=1,Text=text,TextColor3=ZT.Text,TextSize=14,Font=Enum.Font.GothamMedium,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
-    local btns={} local cur=idx
-    for i,c in ipairs(colors) do
-        local b=new("TextButton",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,-16-(#colors-i)*28,.5,0),Size=UD.fromOffset(22,22),BackgroundColor3=c.Color,BorderSizePixel=0,Text="",AutoButtonColor=false,Parent=row})
-        corner(b,11) stroke(b,i==cur and ZT.Accent or ZT.Stroke,2,i==cur and 0 or 0.4)
-        btns[i]=b
-        b.MouseButton1Click:Connect(function()
-            if i==cur then return end
-            local o=cur cur=i
-            local os=btns[o]:FindFirstChildOfClass("UIStroke") if os then os.Color=ZT.Stroke os.Transparency=0.4 end
-            local ns=btns[i]:FindFirstChildOfClass("UIStroke") if ns then ns.Color=ZT.Accent ns.Transparency=0 end
-            cb(c.Color)
+    new("TextLabel",{Position=UD.fromOffset(16,0),Size=UD.new(1,-130,1,0),BackgroundTransparency=1,Text=text,TextColor3=ZT.Text,TextSize=14,Font=Enum.Font.GothamMedium,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
+    local prevBox=new("Frame",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,-90,.5,0),Size=UD.fromOffset(30,24),BackgroundColor3=curColor,BorderSizePixel=0,Parent=row})
+    corner(prevBox,6) stroke(prevBox,ZT.Stroke,1)
+    local editBtn=new("TextButton",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,-16,.5,0),Size=UD.fromOffset(64,28),BackgroundColor3=ZT.Accent,BorderSizePixel=0,Text="编辑",TextColor3=ZT.Text,Font=Enum.Font.GothamBold,TextSize=13,AutoButtonColor=false,Parent=row})
+    corner(editBtn,8)
+    editBtn.MouseButton1Click:Connect(function()
+        pickColor(win.Gui, prevBox.BackgroundColor3, ZT, function(c)
+            prevBox.BackgroundColor3=c
+            cb(c)
         end)
-    end
+    end)
     return row
 end
 local function zvmPlayerRow(win,text,onPick)
@@ -1576,7 +1554,7 @@ local function zvmPlayerRow(win,text,onPick)
 end
 
 -- ============================================================
--- 主题控制函数（供两套 UI 调用）
+-- 主题控制函数
 -- ============================================================
 local function setUIStyle(target)
     if UI_STYLE==target then return end
@@ -1605,17 +1583,6 @@ local function useCustom()
     AppTheme.Preset="custom"
     saveAppTheme()
     notify("主题","已切换为自定义主题，重新加载脚本后完全生效")
-end
-
-local BorderColors={{Color=Color3.fromRGB(70,40,110)},{Color=Color3.fromRGB(58,58,84)},{Color=Color3.fromRGB(64,64,64)},{Color=Color3.fromRGB(54,82,122)},{Color=Color3.fromRGB(180,100,255)},{Color=Color3.fromRGB(65,145,255)},{Color=Color3.fromRGB(230,230,230)},{Color=Color3.fromRGB(120,120,120)}}
-local BgColors={{Color=Color3.fromRGB(14,5,28)},{Color=Color3.fromRGB(12,12,12)},{Color=Color3.fromRGB(19,19,27)},{Color=Color3.fromRGB(10,18,32)},{Color=Color3.fromRGB(20,20,30)},{Color=Color3.fromRGB(8,16,12)},{Color=Color3.fromRGB(24,16,20)},{Color=Color3.fromRGB(16,16,16)}}
-local TextColors={{Color=Color3.fromRGB(230,215,255)},{Color=Color3.fromRGB(242,242,242)},{Color=Color3.fromRGB(238,238,248)},{Color=Color3.fromRGB(230,240,255)},{Color=Color3.fromRGB(255,240,220)},{Color=Color3.fromRGB(220,255,230)},{Color=Color3.fromRGB(255,255,255)},{Color=Color3.fromRGB(200,200,200)}}
-local AccentColors={{Color=Color3.fromRGB(180,100,255)},{Color=Color3.fromRGB(124,108,255)},{Color=Color3.fromRGB(65,145,255)},{Color=Color3.fromRGB(65,200,115)},{Color=Color3.fromRGB(255,150,50)},{Color=Color3.fromRGB(255,120,150)},{Color=Color3.fromRGB(228,228,228)},{Color=Color3.fromRGB(120,200,255)}}
-local function findIdx(list,c)
-    for i,item in ipairs(list) do
-        if math.abs(item.Color.R-c.R)<0.01 and math.abs(item.Color.G-c.G)<0.01 and math.abs(item.Color.B-c.B)<0.01 then return i end
-    end
-    return 1
 end
 
 -- ============================================================
@@ -1663,20 +1630,21 @@ local function buildZvmUI()
     win:Section({Text={zh="主题",en="THEME"}})
     local curLbl=win:Label({Text="当前: "..getActiveTheme().Name,Color=ZT.AccentSoft})
     local function updLbl() curLbl.Text="当前: "..getActiveTheme().Name end
-    win:Button({Text={zh="默认主题",en="Default"},Callback=function() applyPreset("default") updLbl() end})
+    win:Button({Text={zh="默认主题（含背景图）",en="Default"},Callback=function() applyPreset("default") updLbl() end})
     win:Button({Text={zh="黑色主题",en="Black"},Callback=function() applyPreset("black") updLbl() end})
     win:Button({Text={zh="紫色主题（ZvmUI）",en="Purple"},Callback=function() applyPreset("purple") updLbl() end})
     win:Button({Text={zh="蓝色主题",en="Blue"},Callback=function() applyPreset("blue") updLbl() end})
 
     win:Section({Text={zh="自定义主题",en="CUSTOM THEME"}})
     win:Button({Text={zh="使用自定义主题",en="Use Custom"},Callback=function() useCustom() updLbl() end})
-    local bgBox=win:TextBox({Placeholder={zh="背景图ID(留空=默认)",en="Bg Asset ID"},Callback=setBgImage})
+    win:Label({Text="背景图 > 背景颜色（设置背景图后颜色无效）",Color=ZT.SubText,TextSize=11})
+    local bgBox=win:TextBox({Placeholder={zh="背景图ID(留空=使用背景颜色)",en="Bg Asset ID (empty=use color)"},Callback=setBgImage})
     if AppTheme.Custom.BgImage~="" then bgBox.Text=AppTheme.Custom.BgImage:gsub("rbxassetid://","") end
     win:Toggle({Text={zh="启用边框",en="Enable Border"},Default=AppTheme.Custom.Border,Callback=setCustomBorder})
-    zvmColorRow(win,"边框颜色",BorderColors,findIdx(BorderColors,AppTheme.Custom.BorderColor),setCustomBorderColor)
-    zvmColorRow(win,"背景颜色",BgColors,findIdx(BgColors,AppTheme.Custom.Background),setCustomBg)
-    zvmColorRow(win,"文字颜色",TextColors,findIdx(TextColors,AppTheme.Custom.Text),setCustomText)
-    zvmColorRow(win,"强调色",AccentColors,findIdx(AccentColors,AppTheme.Custom.Accent),setCustomAccent)
+    zvmColorRow(win,"背景颜色（有背景图时无效）",AppTheme.Custom.Background,setCustomBg)
+    zvmColorRow(win,"边框颜色",AppTheme.Custom.BorderColor,setCustomBorderColor)
+    zvmColorRow(win,"文字颜色",AppTheme.Custom.Text,setCustomText)
+    zvmColorRow(win,"强调色",AppTheme.Custom.Accent,setCustomAccent)
 
     win:Section({Text={zh="工具",en="TOOLS"}})
     win:Button({Text={zh="TX Script 全自动翻译",en="TX Script"},Callback=function()
@@ -1737,7 +1705,7 @@ local function buildZvmUI()
     win:Toggle({Text={zh="启用碰撞箱",en="Hitbox Toggle"},Default=false,Callback=function(on) setHitboxEnabled(on) end})
     win:Slider({Text={zh="碰撞箱大小",en="Hitbox Size"},Min=1,Max=50,Default=State.HitboxSize,Callback=function(v) setHitboxSize(v) end})
     win:Slider({Text={zh="碰撞箱透明度",en="Transparency"},Min=0,Max=1,Default=State.HitboxTransparency,Callback=function(v) setHitboxTransparency(v) end})
-    zvmColorRow(win,"碰撞箱颜色",{Color=Color3.fromRGB(255,215,0),{Color=Color3.fromRGB(255,60,60)},{Color=Color3.fromRGB(60,150,255)},{Color=Color3.fromRGB(60,255,120)},{Color=Color3.fromRGB(180,80,255)},{Color=Color3.fromRGB(255,255,255)}},1,setHitboxColor)
+    zvmColorRow(win,"碰撞箱颜色",State.HitboxColor,setHitboxColor)
 
     win:Tab({Text={zh="自瞄",en="Aimbot"}})
     win:Toggle({Text={zh="自瞄开关",en="Aimbot Toggle"},Default=false,Callback=function(on) ESP_SETTINGS.HighlightEnabled=on end})
@@ -1775,8 +1743,11 @@ local function buildClassicUI()
     local mainHomePos=UD.fromOffset(math.max(8,(CAM.ViewportSize.X-WIN_W)/2),math.max(8,(CAM.ViewportSize.Y-WIN_H)/2))
     local main=new("Frame",{Position=mainHomePos,Size=UD.fromOffset(WIN_W,WIN_H),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=true,Parent=gui})
     corner(main,8)
-    new("ImageLabel",{Name="VoidBg",Size=UD.fromScale(1,1),Position=UD.fromScale(0,0),BackgroundTransparency=1,Image=getThemeBgImage(),ImageTransparency=0.35,ScaleType=Enum.ScaleType.Crop,ZIndex=0,Parent=main})
-    corner(main:FindFirstChild("VoidBg"),8)
+    local bgImg=getThemeBgImage()
+    if bgImg~="" then
+        new("ImageLabel",{Name="VoidBg",Size=UD.fromScale(1,1),Position=UD.fromScale(0,0),BackgroundTransparency=1,Image=bgImg,ImageTransparency=0.35,ScaleType=Enum.ScaleType.Crop,ZIndex=0,Parent=main})
+        corner(main:FindFirstChild("VoidBg"),8)
+    end
     local mainSt=stroke(main,C.Cyan,1,0.5)
     if not getActiveTheme().Border then mainSt.Transparency=1 end
     local mainSc=fitScale(main,WIN_W,30,0.75)
@@ -1806,7 +1777,7 @@ local function buildClassicUI()
     for i=1,tabCount do
         pages[i]=new("ScrollingFrame",{Position=UD.new(0,0,0,0),Size=UD.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=C.Cyan,CanvasSize=UD.new(0,0,0,pageCanvas[i] or 300),ScrollingDirection=Enum.ScrollingDirection.Y,Visible=(i==1),Parent=content})
     end
-    local resetT,resetS,resetC={},{},{}
+    local resetT,resetS={},{}
     local function makeToggle(parent,y,label,desc,accent,default,cb,noReset)
         local row=new("Frame",{Position=UD.fromOffset(10,y),Size=UD.new(1,-20,0,36),BackgroundColor3=C.Panel,BackgroundTransparency=0.15,BorderSizePixel=0,Parent=parent})
         corner(row,5) stroke(row,C.Line,1,0.5)
@@ -1875,32 +1846,20 @@ local function buildClassicUI()
         end)
         table.insert(resetS,{fn=setVal,default=defV})
     end
-    local function makeColorPicker(parent,y,label,desc,accent,colors,defIdx,cb)
+    -- 经典 UI 颜色行：预览 + 编辑
+    local function makeColorRow(parent,y,label,desc,accent,curColor,cb)
         local row=new("Frame",{Position=UD.fromOffset(10,y),Size=UD.new(1,-20,0,36),BackgroundColor3=C.Panel,BackgroundTransparency=0.15,BorderSizePixel=0,Parent=parent})
         corner(row,5) stroke(row,C.Line,1,0.5)
-        new("TextLabel",{Position=UD.fromOffset(12,4),Size=UD.new(1,-90,0,14),BackgroundTransparency=1,Text=label,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
-        new("TextLabel",{Position=UD.fromOffset(12,19),Size=UD.new(1,-90,0,11),BackgroundTransparency=1,Text=desc,TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
-        local btns={} local bw,gap=18,4 local cur=defIdx or 1
-        for i,c in ipairs(colors) do
-            local ro=-12-(#colors-i)*(bw+gap)
-            local b=new("TextButton",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,ro,.5,0),Size=UD.fromOffset(bw,bw),BackgroundColor3=c.Color,BorderSizePixel=0,Text="",AutoButtonColor=false,Parent=row}) corner(b,3) stroke(b,(i==cur) and accent or C.Line,2,(i==cur) and 0 or 0.6)
-            btns[i]=b
-            b.Activated:Connect(function()
-                if i==cur then return end
-                local o=cur cur=i
-                local os=btns[o]:FindFirstChildOfClass("UIStroke") if os then os.Color=C.Line os.Transparency=0.6 end
-                local ns=btns[i]:FindFirstChildOfClass("UIStroke") if ns then ns.Color=accent ns.Transparency=0 end
-                tw(b,0.18,{Size=UD.fromOffset(bw+3,bw+3)},Enum.EasingStyle.Back)
-                tw(b,0.26,{Size=UD.fromOffset(bw,bw)},Enum.EasingStyle.Back)
-                if cb then cb(c.Color) end
+        new("TextLabel",{Position=UD.fromOffset(12,4),Size=UD.new(1,-120,0,14),BackgroundTransparency=1,Text=label,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
+        new("TextLabel",{Position=UD.fromOffset(12,19),Size=UD.new(1,-120,0,11),BackgroundTransparency=1,Text=desc,TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
+        local prevBox=new("Frame",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,-86,.5,0),Size=UD.fromOffset(28,22),BackgroundColor3=curColor,BorderSizePixel=0,Parent=row})
+        corner(prevBox,5) stroke(prevBox,C.Line,1,0.5)
+        local editBtn=new("TextButton",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,-12,.5,0),Size=UD.fromOffset(60,22),BackgroundColor3=accent,BorderSizePixel=0,Text="编辑",TextColor3=C.Bg,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false,Parent=row})
+        corner(editBtn,4)
+        editBtn.Activated:Connect(function()
+            pickColor(gui, prevBox.BackgroundColor3, C, function(c)
+                prevBox.BackgroundColor3=c cb(c)
             end)
-        end
-        table.insert(resetC,function()
-            if cur==1 then return end
-            local o=cur cur=1
-            local os=btns[o]:FindFirstChildOfClass("UIStroke") if os then os.Color=C.Line os.Transparency=0.6 end
-            local ns=btns[1]:FindFirstChildOfClass("UIStroke") if ns then ns.Color=accent ns.Transparency=0 end
-            if cb then cb(colors[1].Color) end
         end)
     end
     local function makeActionBtn(parent,y,label,desc,accent,btnText,cb)
@@ -1911,16 +1870,11 @@ local function buildClassicUI()
         new("TextLabel",{Position=UD.fromOffset(12,19),Size=UD.new(1,-120,0,11),BackgroundTransparency=1,Text=desc,TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
         local txt=btnText or "执行"
         local btn=new("TextButton",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,-12,.5,0),Size=UD.fromOffset(60,22),BackgroundColor3=accent,BorderSizePixel=0,Text=txt,TextColor3=C.Bg,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false,Parent=row}) corner(btn,4)
-        local act=false
-        local function setA(v) act=v btn.Text=v and "关闭" or txt btn.BackgroundColor3=v and C.Red or accent btn.TextColor3=v and C.Text or C.Bg end
-        btn.MouseEnter:Connect(function() if not act then tw(btn,0.18,{BackgroundTransparency=0.15}) end end)
-        btn.MouseLeave:Connect(function() if not act then tw(btn,0.18,{BackgroundTransparency=0}) end end)
         btn.Activated:Connect(function()
             tw(btn,0.08,{Size=UD.fromOffset(56,20)},Enum.EasingStyle.Back)
             tw(btn,0.22,{Size=UD.fromOffset(60,22)},Enum.EasingStyle.Back)
-            if cb then cb(setA,act) end
+            if cb then cb() end
         end)
-        return setA
     end
     local function showPlayerSelect(cb)
         local ov=new("Frame",{Size=UD.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,BorderSizePixel=0,ZIndex=100,Parent=gui})
@@ -1964,7 +1918,6 @@ local function buildClassicUI()
         rb.Activated:Connect(function()
             for _,s in ipairs(resetT) do s(false) end
             for _,s in ipairs(resetS) do s.fn(s.default) end
-            for _,r in ipairs(resetC) do r() end
             closeAllFeatures()
             tw(rb,0.08,{BackgroundColor3=C.Green}) tw(rb,0.24,{BackgroundColor3=C.Panel2},Enum.EasingStyle.Back)
         end)
@@ -1981,26 +1934,25 @@ local function buildClassicUI()
 
         -- 主题
         new("TextLabel",{Position=UD.fromOffset(12,238),Size=UD.new(1,-24,0,14),BackgroundTransparency=1,Text="主题 · "..getActiveTheme().Name,TextColor3=C.Cyan,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=p})
-        local function applyAndLbl(n) applyPreset(n) end
-        makeActionBtn(p,258,"默认主题","DEFAULT",C.Cyan,"应用",function() applyAndLbl("default") end)
-        makeActionBtn(p,298,"黑色主题","BLACK",C.Dim,"应用",function() applyAndLbl("black") end)
-        makeActionBtn(p,338,"紫色主题","PURPLE",C.Cyan,"应用",function() applyAndLbl("purple") end)
-        makeActionBtn(p,378,"蓝色主题","BLUE",Color3.fromRGB(65,145,255),"应用",function() applyAndLbl("blue") end)
+        makeActionBtn(p,258,"默认主题（含背景图）","DEFAULT",C.Cyan,"应用",function() applyPreset("default") end)
+        makeActionBtn(p,298,"黑色主题","BLACK",C.Dim,"应用",function() applyPreset("black") end)
+        makeActionBtn(p,338,"紫色主题","PURPLE",C.Cyan,"应用",function() applyPreset("purple") end)
+        makeActionBtn(p,378,"蓝色主题","BLUE",Color3.fromRGB(65,145,255),"应用",function() applyPreset("blue") end)
         makeActionBtn(p,418,"使用自定义主题","CUSTOM",C.Purple,"应用",function() useCustom() end)
 
         -- 自定义
         local bgRow=new("Frame",{Position=UD.fromOffset(10,458),Size=UD.new(1,-20,0,38),BackgroundColor3=C.Panel,BackgroundTransparency=0.15,BorderSizePixel=0,Parent=p})
         corner(bgRow,5) stroke(bgRow,C.Line,1,0.5)
         new("TextLabel",{Position=UD.fromOffset(12,4),Size=UD.new(1,-130,0,14),BackgroundTransparency=1,Text="背景图 ID",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=bgRow})
-        new("TextLabel",{Position=UD.fromOffset(12,19),Size=UD.new(1,-130,0,11),BackgroundTransparency=1,Text="留空=默认 131769990624851",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=bgRow})
+        new("TextLabel",{Position=UD.fromOffset(12,19),Size=UD.new(1,-130,0,11),BackgroundTransparency=1,Text="留空=使用背景颜色，填写后背景颜色无效",TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=bgRow})
         local bgInput=new("TextBox",{Position=UD.new(1,-100,0,10),Size=UD.fromOffset(88,18),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text="",PlaceholderText="ID",PlaceholderColor3=C.Dim,TextColor3=C.Cyan,Font=Enum.Font.Code,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center,ClearTextOnFocus=false,Parent=bgRow}) corner(bgInput,3) stroke(bgInput,C.Line,1,0.4)
         if AppTheme.Custom.BgImage~="" then bgInput.Text=AppTheme.Custom.BgImage:gsub("rbxassetid://","") end
         bgInput.FocusLost:Connect(function() setBgImage(bgInput.Text) end)
         makeToggle(p,500,"启用边框","BORDER",C.Cyan,AppTheme.Custom.Border,function(on) setCustomBorder(on) end,true)
-        makeColorPicker(p,540,"边框颜色","BORDER",C.Cyan,BorderColors,findIdx(BorderColors,AppTheme.Custom.BorderColor),setCustomBorderColor)
-        makeColorPicker(p,580,"背景颜色","BG",C.Cyan,BgColors,findIdx(BgColors,AppTheme.Custom.Background),setCustomBg)
-        makeColorPicker(p,620,"文字颜色","TEXT",C.Cyan,TextColors,findIdx(TextColors,AppTheme.Custom.Text),setCustomText)
-        makeColorPicker(p,660,"强调色","ACCENT",C.Cyan,AccentColors,findIdx(AccentColors,AppTheme.Custom.Accent),setCustomAccent)
+        makeColorRow(p,540,"背景颜色","有背景图时无效",C.Cyan,AppTheme.Custom.Background,setCustomBg)
+        makeColorRow(p,580,"边框颜色","BORDER",C.Cyan,AppTheme.Custom.BorderColor,setCustomBorderColor)
+        makeColorRow(p,620,"文字颜色","TEXT",C.Cyan,AppTheme.Custom.Text,setCustomText)
+        makeColorRow(p,660,"强调色","ACCENT",C.Cyan,AppTheme.Custom.Accent,setCustomAccent)
         makeActionBtn(p,700,"TX Script","全自动翻译",C.Green,"启动",function()
             local ok,err=pcall(function() local TX="TX Script" local Script="全自动翻译" loadstring(game:HttpGet("https://raw.githubusercontent.com/JsYb666/Item/refs/heads/main/Auto-language"))() end)
             if not ok then notify("TX Script","加载失败: "..tostring(err)) end
@@ -2064,11 +2016,10 @@ local function buildClassicUI()
     end
     do
         local p=pages[5]
-        local colors={{Color=Color3.fromRGB(255,215,0)},{Color=Color3.fromRGB(255,60,60)},{Color=Color3.fromRGB(60,150,255)},{Color=Color3.fromRGB(60,255,120)},{Color=Color3.fromRGB(180,80,255)},{Color=Color3.fromRGB(255,255,255)}}
         makeToggle(p,6,"启用碰撞箱","HITBOX",C.Green,false,function(on) setHitboxEnabled(on) end)
         makeSlider(p,46,"碰撞箱大小",C.Green,1,50,State.HitboxSize,"",0,function(v) setHitboxSize(v) end)
         makeSlider(p,86,"碰撞箱透明度",C.Green,0,1,State.HitboxTransparency,"",2,function(v) setHitboxTransparency(v) end)
-        makeColorPicker(p,126,"碰撞箱颜色","COLOR",C.Green,colors,1,function(c) setHitboxColor(c) end)
+        makeColorRow(p,126,"碰撞箱颜色","COLOR",C.Green,State.HitboxColor,setHitboxColor)
     end
     do
         local p=pages[6]
@@ -2152,7 +2103,7 @@ local function buildClassicUI()
 end
 
 -- ============================================================
--- 定时保存 + 启动
+-- 启动
 -- ============================================================
 task.spawn(function() while true do task.wait(10) saveElapsed() end end)
 if LOAD_SCREEN then runLoadScreen() end
