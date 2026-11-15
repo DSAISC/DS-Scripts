@@ -1,5 +1,5 @@
 -- ============================================================
--- VOID V3 · ZvmUI 版
+-- VOID V3 · ZvmUI 版（持久化重构）
 -- ============================================================
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -7,27 +7,112 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
 local LP = Players.LocalPlayer
 local PG = LP:WaitForChild("PlayerGui")
 local CAM = workspace.CurrentCamera
 local UD = UDim2
 
--- ===== 配置持久化 =====
-local function readCfg(k, def)
-    local ok, v = pcall(function() return LP:GetAttribute("VoidCfg_"..k) end)
-    if ok and v ~= nil then return v end
-    if _G.VoidConfig and _G.VoidConfig[k] ~= nil then return _G.VoidConfig[k] end
-    return def
-end
-local function writeCfg(k, v)
-    pcall(function() LP:SetAttribute("VoidCfg_"..k, v) end)
-    _G.VoidConfig = _G.VoidConfig or {}
-    _G.VoidConfig[k] = v
-end
-local UI_STYLE = readCfg("UIStyle", "zvm")
-local LOAD_SCREEN = readCfg("LoadScreenEnabled", true)
+-- ============================================================
+-- 持久化模块（文件 > Attribute > _G 三级容错）
+-- ============================================================
+local Persist = {}
+local PERSIST_FILE = "VoidV3_Config.json"
+local _store = nil
 
--- ===== 颜色 =====
+local function fileOK()
+    return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
+end
+
+local function tryDecode(str)
+    if type(str) ~= "string" or str == "" then return nil end
+    local ok, parsed = pcall(function() return HttpService:JSONDecode(str) end)
+    if ok and type(parsed) == "table" then return parsed end
+    return nil
+end
+
+local function loadStore()
+    if _store then return _store end
+    local data = {}
+    -- 1. 文件（最持久，跨 session）
+    if fileOK() then
+        local ok, raw = pcall(function()
+            if isfile(PERSIST_FILE) then return readfile(PERSIST_FILE) end
+        end)
+        local parsed = ok and tryDecode(raw)
+        if parsed then for k, v in pairs(parsed) do data[k] = v end end
+    end
+    -- 2. Attribute（同 session 内重载脚本保留）
+    if next(data) == nil then
+        local ok, attr = pcall(function() return LP:GetAttribute("VoidPersist") end)
+        local parsed = ok and tryDecode(attr)
+        if parsed then for k, v in pairs(parsed) do data[k] = v end end
+    end
+    -- 3. _G（同执行器会话）
+    if next(data) == nil and type(_G.VoidPersist) == "table" then
+        for k, v in pairs(_G.VoidPersist) do
+            if data[k] == nil then data[k] = v end
+        end
+    end
+    _store = data
+    return data
+end
+
+function Persist.get(key, default)
+    local d = loadStore()
+    if d[key] ~= nil then return d[key] end
+    return default
+end
+
+function Persist.set(key, value)
+    local d = loadStore()
+    d[key] = value
+    _G.VoidPersist = _G.VoidPersist or {}
+    _G.VoidPersist[key] = value
+    local ok, jsonStr = pcall(function() return HttpService:JSONEncode(d) end)
+    if ok and type(jsonStr) == "string" then
+        pcall(function() LP:SetAttribute("VoidPersist", jsonStr) end)
+        if fileOK() then
+            pcall(function() writefile(PERSIST_FILE, jsonStr) end)
+        end
+    end
+end
+
+function Persist.clear()
+    _store = {}
+    _G.VoidPersist = {}
+    pcall(function() LP:SetAttribute("VoidPersist", "{}") end)
+    if fileOK() then
+        pcall(function() writefile(PERSIST_FILE, "{}") end)
+    end
+end
+
+-- ============================================================
+-- 累计时间模块（跨 session 累加，不重置）
+-- ============================================================
+local totalBase = tonumber(Persist.get("TotalSeconds", 0)) or 0
+local sessionStart = tick()
+local function getTotalElapsed()
+    return totalBase + (tick() - sessionStart)
+end
+local function resetElapsed()
+    totalBase = 0
+    sessionStart = tick()
+    Persist.set("TotalSeconds", 0)
+end
+local function saveElapsed()
+    Persist.set("TotalSeconds", getTotalElapsed())
+end
+
+-- ============================================================
+-- 配置读取
+-- ============================================================
+local UI_STYLE = Persist.get("UIStyle", "zvm")
+local LOAD_SCREEN = Persist.get("LoadScreenEnabled", true)
+
+-- ============================================================
+-- 颜色
+-- ============================================================
 local C = {
     Void=Color3.fromRGB(6,2,16), Bg=Color3.fromRGB(14,5,28), Panel=Color3.fromRGB(24,12,45),
     Panel2=Color3.fromRGB(38,20,65), Line=Color3.fromRGB(70,40,110), Cyan=Color3.fromRGB(180,100,255),
@@ -38,7 +123,6 @@ local BASE_JUMP = 50
 local baseSpeed, lastSetSpeed = 16, 16
 local speedToggleDesc
 local spectateTarget, followTarget, spectateSetOn, followSetOn
-local SCRIPT_START = tick()
 
 local State = {
     NoclipEnabled=false, InfiniteJumpEnabled=false, SpeedEnabled=false, JumpEnabled=false,
@@ -52,7 +136,9 @@ local ESPObjects, PromptESPObjects = {}, {}
 local infJumpConn, instantConn, promptConn, hitboxConn, noclipConn
 local HitboxOrig = setmetatable({}, {__mode="k"})
 
--- ===== 工具 =====
+-- ============================================================
+-- 工具
+-- ============================================================
 local function new(c,p) local i=Instance.new(c);local pt;for k,v in pairs(p or {}) do if k=="Parent" then pt=v else i[k]=v end end;if pt then i.Parent=pt end;return i end
 local function corner(p,r) return new("UICorner",{CornerRadius=UDim.new(0,r),Parent=p}) end
 local function stroke(p,c,t,tr) return new("UIStroke",{Color=c,Thickness=t or 1,Transparency=tr or 0,ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Parent=p}) end
@@ -88,8 +174,14 @@ end
 local function notify(t,x) pcall(function() StarterGui:SetCore("SendNotification",{Title=t,Text=x,Duration=4}) end) end
 local function getChar() local c=LP.Character;if not c then return nil,nil end;return c,c:FindFirstChildOfClass("Humanoid") end
 local function updateBaseSpeedLbl() if speedToggleDesc and speedToggleDesc.Parent then speedToggleDesc.Text="原始移速: "..math.floor(baseSpeed+0.5) end end
+local function fmtTime(sec)
+    sec = math.floor(sec)
+    return string.format("%02d:%02d:%02d", math.floor(sec/3600), math.floor((sec%3600)/60), sec%60)
+end
 
--- ===== 功能实现 =====
+-- ============================================================
+-- 功能实现
+-- ============================================================
 local function setNoclip(enabled)
     State.NoclipEnabled=enabled
     if noclipConn then noclipConn:Disconnect();noclipConn=nil end
@@ -107,7 +199,6 @@ local function applyJump() local _,h=getChar();if not h then return end h.UseJum
 local function setJump(v) State.CustomJump=v;applyJump() end
 local function setJumpEnabled(v) State.JumpEnabled=v;applyJump() end
 
--- GuardZones
 local GuardZones={Enabled=false,Size=0,Buttons={},FadeToken=0,Gui=nil}
 local function setupGuardZones()
     if GuardZones.Gui then return end
@@ -179,7 +270,6 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
--- Hitbox
 local function saveHitboxOrig(char)
     if HitboxOrig[char] then return end
     local head=char:FindFirstChild("Head");local root=char:FindFirstChild("HumanoidRootPart")
@@ -226,7 +316,6 @@ end
 local function runExternal(url,name) local ok,err=pcall(function() loadstring(game:HttpGet(url))() end);if not ok then notify(name,"脚本加载失败: "..tostring(err)) end end
 local function flyingScript() runExternal("https://pastebin.com/raw/ZBzcTm1f","飞行") end
 
--- ESP
 local function clearPlayerESP(player)
     local d=ESPObjects[player];if not d then return end
     if d.highlight then d.highlight:Destroy() end
@@ -289,7 +378,6 @@ end
 local function refreshAllESP() for _,p in ipairs(Players:GetPlayers()) do if p~=LP then createPlayerESP(p) end end end
 local function clearAllESP() for player,_ in pairs(ESPObjects) do clearPlayerESP(player) end end
 
--- Prompt ESP
 local function createPromptESP(prompt)
     if PromptESPObjects[prompt] then return end
     local parent=prompt.Parent
@@ -336,7 +424,6 @@ local function setPromptESP(enabled)
     end
 end
 
--- Fog / NightVision
 local fogOrig,atmoOrig=nil,nil
 local function setRemoveFog(enabled)
     State.RemoveFogEnabled=enabled
@@ -367,7 +454,6 @@ local function setNightVision(enabled)
     end
 end
 
--- Freecam
 local Freecam={Speed=2,Sensitivity=0.01,Enabled=false,Rig=nil,Loop=nil,Yaw=0,Pitch=0,MoveInput=Vector2.zero,Connections={},Touch={Move=nil,Look=nil,MoveStart=nil},_InputInited=false}
 local function InitFreecamInput()
     if Freecam._InputInited then return end Freecam._InputInited=true
@@ -427,7 +513,6 @@ local function StopFreecam()
     CAM.CameraType=Enum.CameraType.Custom
 end
 
--- AntiFall
 local AntiFallEnabled=false;local AntiFallConn=nil
 local function StartAntiFall(ch)
     if AntiFallConn then AntiFallConn:Disconnect();AntiFallConn=nil end
@@ -445,7 +530,6 @@ local function ToggleAntiFall(s)
 end
 LP.CharacterAdded:Connect(function(c) if AntiFallEnabled then StartAntiFall(c) end end)
 
--- Interact ESP
 local InteractESP={Enabled=false,Color=Color3.fromRGB(0,255,0),Highlights={},Conn=nil}
 local function IsInteractive(o) return o and (o:IsA("ProximityPrompt") or o:IsA("ClickDetector")) end
 local function FindAdornPart(t)
@@ -505,7 +589,6 @@ local function ToggleInteractESP(s)
     end
 end
 
--- Aimbot
 local ESP_SETTINGS={HighlightEnabled=false,TeamCheck=false,SmoothAim=false,WallCheck=false}
 local AimbotTeamWhitelist={};local AimbotTeamWhitelistEnabled=false
 local FOV=120;local Smoothness=0.18;local AimPart="Head";local ShowFOVCircle=true
@@ -615,7 +698,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Fling / TP / Spin
 local FlingLoop=false;local Flinging=false;local AlreadyNotified={}
 local TP_Loop=false;local TP_LoopConn=nil;local TP_SelectedPlayer=nil
 local function TeleportToPlayer(t)
@@ -783,6 +865,7 @@ local function closeAllFeatures()
     setGuardEnabled(false);applyGuardSize(0)
     local _,h=getChar();if h then h.WalkSpeed=baseSpeed;h.UseJumpPower=true;h.JumpPower=BASE_JUMP end
     clearAllESP()
+    saveElapsed()
 end
 
 local function onPlayerAdded(player)
@@ -1007,7 +1090,7 @@ local function runLoadScreen()
 end
 
 -- ============================================================
--- ZvmUI 库（内嵌精炼版）
+-- ZvmUI 库（内嵌）
 -- ============================================================
 local ZvmUI = {}
 local PresetThemes = {
@@ -1206,7 +1289,6 @@ function Window:SetTheme(name)
     local t = PresetThemes[name]; if not t then return end
     Theme.Accent = t.Accent; Theme.AccentSoft = t.AccentSoft
 end
-
 function Window:Tab(options)
     options = options or {}
     local tabId = options.Id or tostring(math.random(1, 100000))
@@ -1280,7 +1362,6 @@ function Window:Tab(options)
     self.Content = page
     return page
 end
-
 function Window:Button(options)
     options = options or {}
     local button = Instance.new("TextButton")
@@ -1303,7 +1384,6 @@ function Window:Button(options)
     button.MouseButton1Click:Connect(function() if options.Callback then task.spawn(options.Callback) end end)
     return button
 end
-
 function Window:Toggle(options)
     options = options or {}
     local row = Instance.new("Frame")
@@ -1356,7 +1436,6 @@ function Window:Toggle(options)
     row.MouseLeave:Connect(function() bgAnim:Set(Theme.Surface); st.Color = Theme.Stroke end)
     return row
 end
-
 function Window:Slider(options)
     options = options or {}
     local minValue, maxValue = options.Min or 0, options.Max or 100
@@ -1430,7 +1509,6 @@ function Window:Slider(options)
     container.MouseLeave:Connect(function() st.Color = Theme.Stroke; if not dragging then knobScaleAnim:Set(1) end end)
     return container
 end
-
 function Window:Label(options)
     options = options or {}
     local label = Instance.new("TextLabel")
@@ -1503,13 +1581,10 @@ function ZvmUI.CreateWindow(config)
     if config.Background then
         local bg = Instance.new("ImageLabel")
         bg.Name = "ZvmBackground"
-        bg.Size = UDim2.fromScale(1,1)
-        bg.BackgroundTransparency = 1
+        bg.Size = UDim2.fromScale(1,1); bg.BackgroundTransparency = 1
         bg.Image = config.Background
         bg.ImageTransparency = config.BackgroundTransparency or 0.35
-        bg.ScaleType = Enum.ScaleType.Crop
-        bg.ZIndex = 0
-        bg.Parent = main
+        bg.ScaleType = Enum.ScaleType.Crop; bg.ZIndex = 0; bg.Parent = main
         createUICorner(bg, 18)
     end
     local bgG = Instance.new("UIGradient")
@@ -1646,6 +1721,7 @@ function ZvmUI.CreateWindow(config)
         if closing then return end
         closing = true; confirmModal.Visible = false
         rootScaleAnim.Stiffness = 450; rootScaleAnim.Damping = 22; rootScaleAnim:Set(0)
+        saveElapsed()
         task.delay(0.6, function()
             for _, c in ipairs(window._connections) do c:Disconnect() end
             if gui then gui:Destroy() end
@@ -1672,15 +1748,8 @@ function ZvmUI.CreateWindow(config)
 end
 
 -- ============================================================
--- ZvmUI 版窗口
+-- ZvmUI 辅助行
 -- ============================================================
-local function setUIStyle(target)
-    local cur = readCfg("UIStyle", "zvm")
-    if cur == target then return end
-    writeCfg("UIStyle", target)
-    notify("界面切换", "已切换为 "..(target=="zvm" and "ZvmUI" or "经典界面").."，请重新加载脚本生效")
-end
-
 local function zvmPickPlayer(win, cb)
     local gui = win.Gui
     local ZT = ZvmUI.Theme
@@ -1750,6 +1819,19 @@ local function zvmPlayerRow(win, text, onPick)
     return lbl
 end
 
+-- ============================================================
+-- 界面风格切换（持久化）
+-- ============================================================
+local function setUIStyle(target)
+    if UI_STYLE == target then return end
+    UI_STYLE = target
+    Persist.set("UIStyle", target)
+    notify("界面切换", "已保存为 "..(target=="zvm" and "ZvmUI" or "经典界面").."，重新加载脚本后生效")
+end
+
+-- ============================================================
+-- ZvmUI 主界面
+-- ============================================================
 local function buildZvmUI()
     local ZT = ZvmUI.Theme
     local win = ZvmUI.CreateWindow({
@@ -1764,20 +1846,54 @@ local function buildZvmUI()
     win:Tab({Text = {zh="主要", en="Home"}})
     win:Section({Text = {zh="账户", en="ACCOUNT"}})
     win:Label({Text = "玩家: "..LP.Name.."  |  UID: "..LP.UserId.."  |  AGE: "..LP.AccountAge.."D"})
-    local timeLbl = win:Label({Text = "已使用 00:00:00", Color = ZT.AccentSoft})
+    local timeLbl = win:Label({Text = "累计使用 "..fmtTime(getTotalElapsed()), Color = ZT.AccentSoft})
     task.spawn(function()
         while timeLbl.Parent do
-            local e = math.floor(tick()-SCRIPT_START)
-            timeLbl.Text = string.format("已使用 %02d:%02d:%02d", math.floor(e/3600), math.floor((e%3600)/60), e%60)
+            timeLbl.Text = "累计使用 "..fmtTime(getTotalElapsed())
             task.wait(1)
         end
     end)
-    win:Button({Text = {zh="重置所有功能", en="Reset All"}, Callback = function() closeAllFeatures() end})
+
+    win:Section({Text = {zh="记忆与设置", en="MEMORY"}})
+    win:Label({Text = "当前界面: "..(UI_STYLE == "zvm" and "ZvmUI" or "经典界面"), Color = ZT.AccentSoft})
+    win:Button({Text = {zh="重置所有功能", en="Reset All Features"}, Callback = function()
+        closeAllFeatures()
+        notify("重置", "所有功能已重置")
+    end})
+    local clearBtn = win:Button({Text = {zh="清空所有记忆", en="Clear All Memory"}})
+    local clearLbl = clearBtn:FindFirstChildOfClass("TextLabel")
+    local clearPending = false
+    clearBtn.MouseButton1Click:Connect(function()
+        if not clearPending then
+            clearPending = true
+            if clearLbl then clearLbl.Text = "再次点击确认清空" end
+            task.delay(3, function()
+                clearPending = false
+                if clearLbl and clearLbl.Parent then clearLbl.Text = "清空所有记忆" end
+            end)
+        else
+            clearPending = false
+            Persist.clear()
+            resetElapsed()
+            if clearLbl and clearLbl.Parent then clearLbl.Text = "已清空" end
+            notify("记忆", "所有记忆已清空，重新加载脚本后恢复默认")
+            task.delay(2, function()
+                if clearLbl and clearLbl.Parent then clearLbl.Text = "清空所有记忆" end
+            end)
+        end
+    end)
+    win:Toggle({
+        Text = {zh="使用 ZvmUI 界面", en="Use ZvmUI"},
+        Default = (UI_STYLE == "zvm"),
+        Callback = function(on) setUIStyle(on and "zvm" or "classic") end,
+    })
     win:Toggle({
         Text = {zh="启动加载界面", en="Load Screen"},
         Default = LOAD_SCREEN,
-        Callback = function(on) LOAD_SCREEN = on; State.LoadScreenEnabled = on; writeCfg("LoadScreenEnabled", on) end,
+        Callback = function(on) LOAD_SCREEN = on; State.LoadScreenEnabled = on; Persist.set("LoadScreenEnabled", on) end,
     })
+
+    win:Section({Text = {zh="工具", en="TOOLS"}})
     win:Button({
         Text = {zh="TX Script 全自动翻译", en="TX Script Translate"},
         Callback = function()
@@ -1797,12 +1913,6 @@ local function buildZvmUI()
         Text = {zh="防误触范围", en="Lock Range"},
         Min = 0, Max = 200, Default = GuardZones.Size, Suffix = " px",
         Callback = function(v) flashGuardZones(v) end,
-    })
-    win:Section({Text = {zh="界面", en="INTERFACE"}})
-    win:Toggle({
-        Text = {zh="使用 ZvmUI 界面", en="Use ZvmUI"},
-        Default = (UI_STYLE == "zvm"),
-        Callback = function(on) setUIStyle(on and "zvm" or "classic") end,
     })
 
     -- 通用
@@ -1915,11 +2025,11 @@ local function buildZvmUI()
 end
 
 -- ============================================================
--- 经典 UI 版窗口（原 Void 界面）
+-- 经典 UI 主界面
 -- ============================================================
 local function buildClassicUI()
     local gui=new("ScreenGui",{Name="VoidUI",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
-    local WIN_W,WIN_H=320,340
+    local WIN_W,WIN_H=320,380
     local mainHomePos=UD.fromOffset(math.max(8,(CAM.ViewportSize.X-WIN_W)/2),math.max(8,(CAM.ViewportSize.Y-WIN_H)/2))
     local main=new("Frame",{Position=mainHomePos,Size=UD.fromOffset(WIN_W,WIN_H),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=true,Parent=gui})
     corner(main,8)
@@ -1954,7 +2064,7 @@ local function buildClassicUI()
     for i,name in ipairs(tabs) do tabBtns[i]=new("TextButton",{Position=UD.new((i-1)/tabCount,0,0,0),Size=UD.new(1/tabCount,0,1,0),BackgroundTransparency=1,Text=name,TextColor3=(i==1) and C.Text or C.Dim,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Center,Parent=tabBar}) end
     local content=new("Frame",{Position=UD.new(0,0,0,58),Size=UD.new(1,0,1,-84),BackgroundTransparency=1,ClipsDescendants=true,Parent=main})
     local pages={}
-    local pageCanvas={340,400,420,620,190,560}
+    local pageCanvas={420,400,420,620,190,560}
     for i=1,tabCount do
         pages[i]=new("ScrollingFrame",{Position=UD.new(0,0,0,0),Size=UD.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=C.Cyan,CanvasSize=UD.new(0,0,0,pageCanvas[i] or 300),ScrollingDirection=Enum.ScrollingDirection.Y,Visible=(i==1),Parent=content})
     end
@@ -2125,11 +2235,10 @@ local function buildClassicUI()
         new("TextLabel",{Position=UD.fromOffset(54,8),Size=UD.new(1,-64,0,14),BackgroundTransparency=1,Text=LP.Name,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,Parent=sc})
         new("TextLabel",{Position=UD.fromOffset(54,24),Size=UD.new(1,-64,0,11),BackgroundTransparency=1,Text="UID  "..LP.UserId,TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=sc})
         new("TextLabel",{Position=UD.fromOffset(54,36),Size=UD.new(1,-64,0,11),BackgroundTransparency=1,Text="AGE  "..LP.AccountAge.."D   |   ONLINE",TextColor3=C.Green,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=sc})
-        local tl=new("TextLabel",{Position=UD.fromOffset(54,50),Size=UD.new(1,-64,0,12),BackgroundTransparency=1,Text="已使用  00:00:00",TextColor3=C.Cyan,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=sc})
+        local tl=new("TextLabel",{Position=UD.fromOffset(54,50),Size=UD.new(1,-64,0,12),BackgroundTransparency=1,Text="累计使用  "..fmtTime(getTotalElapsed()),TextColor3=C.Cyan,Font=Enum.Font.Code,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,Parent=sc})
         task.spawn(function()
             while tl.Parent do
-                local e=math.floor(tick()-SCRIPT_START)
-                tl.Text=string.format("已使用  %02d:%02d:%02d",math.floor(e/3600),math.floor((e%3600)/60),e%60)
+                tl.Text="累计使用  "..fmtTime(getTotalElapsed())
                 task.wait(1)
             end
         end)
@@ -2143,14 +2252,37 @@ local function buildClassicUI()
             closeAllFeatures()
             tw(rb,0.08,{BackgroundColor3=C.Green});tw(rb,0.24,{BackgroundColor3=C.Panel2},Enum.EasingStyle.Back)
         end)
-        makeToggle(p,116,"使用 ZvmUI 界面","切换后重新加载脚本生效",C.Cyan,(UI_STYLE=="zvm"),function(on) setUIStyle(on and "zvm" or "classic") end,true)
-        makeToggle(p,160,"启动加载界面","LOAD SCREEN",C.Cyan,LOAD_SCREEN,function(on) LOAD_SCREEN=on;State.LoadScreenEnabled=on;writeCfg("LoadScreenEnabled",on) end,true)
-        makeActionBtn(p,204,"TX Script","全自动翻译",C.Green,"启动",function()
+        local clearBtn=new("TextButton",{Position=UD.fromOffset(10,116),Size=UD.new(1,-20,0,26),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text="清空所有记忆",TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,AutoButtonColor=false,Parent=p});corner(clearBtn,5);stroke(clearBtn,C.Line,1,0.5)
+        local clearPending=false
+        clearBtn.MouseEnter:Connect(function() tw(clearBtn,0.16,{BackgroundColor3=C.Panel}) end)
+        clearBtn.MouseLeave:Connect(function() tw(clearBtn,0.16,{BackgroundColor3=C.Panel2}) end)
+        clearBtn.Activated:Connect(function()
+            if not clearPending then
+                clearPending=true
+                clearBtn.Text="再次点击确认清空"
+                task.delay(3,function()
+                    clearPending=false
+                    if clearBtn.Parent then clearBtn.Text="清空所有记忆" end
+                end)
+            else
+                clearPending=false
+                Persist.clear()
+                resetElapsed()
+                clearBtn.Text="已清空"
+                notify("记忆","所有记忆已清空，重新加载脚本后恢复默认")
+                task.delay(2,function()
+                    if clearBtn.Parent then clearBtn.Text="清空所有记忆" end
+                end)
+            end
+        end)
+        makeToggle(p,156,"使用 ZvmUI 界面","切换后重新加载生效",C.Cyan,(UI_STYLE=="zvm"),function(on) setUIStyle(on and "zvm" or "classic") end,true)
+        makeToggle(p,200,"启动加载界面","LOAD SCREEN",C.Cyan,LOAD_SCREEN,function(on) LOAD_SCREEN=on;State.LoadScreenEnabled=on;Persist.set("LoadScreenEnabled",on) end,true)
+        makeActionBtn(p,244,"TX Script","全自动翻译",C.Green,"启动",function()
             local ok,err=pcall(function() local TX="TX Script" local Script="全自动翻译" loadstring(game:HttpGet("https://raw.githubusercontent.com/JsYb666/Item/refs/heads/main/Auto-language"))() end)
             if not ok then notify("TX Script","加载失败: "..tostring(err)) end
         end)
-        makeToggle(p,248,"屏幕防误触","LOCK  EDGE  TOUCH",C.Red,false,function(on) setGuardEnabled(on) end)
-        makeSlider(p,288,"防误触范围",C.Red,0,200,GuardZones.Size," px",0,function(v) flashGuardZones(v) end)
+        makeToggle(p,288,"屏幕防误触","LOCK  EDGE  TOUCH",C.Red,false,function(on) setGuardEnabled(on) end)
+        makeSlider(p,328,"防误触范围",C.Red,0,200,GuardZones.Size," px",0,function(v) flashGuardZones(v) end)
     end
     do
         local p=pages[2]
@@ -2336,7 +2468,14 @@ local function buildClassicUI()
 end
 
 -- ============================================================
--- 启动
+-- 定时保存累计时间 + 启动
 -- ============================================================
+task.spawn(function()
+    while true do
+        task.wait(10)
+        saveElapsed()
+    end
+end)
+
 if LOAD_SCREEN then runLoadScreen() end
 if UI_STYLE == "classic" then buildClassicUI() else buildZvmUI() end
