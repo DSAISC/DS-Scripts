@@ -1,5 +1,5 @@
 -- ============================================================
--- VOID V3 · ZvmUI 版（持久化重构）
+-- VOID V3 · ZvmUI 版（全机型适配优化）
 -- ============================================================
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -12,25 +12,21 @@ local LP = Players.LocalPlayer
 local PG = LP:WaitForChild("PlayerGui")
 local CAM = workspace.CurrentCamera
 local UD = UDim2
-
 -- ============================================================
 -- 持久化模块（文件 > Attribute > _G 三级容错）
 -- ============================================================
 local Persist = {}
 local PERSIST_FILE = "VoidV3_Config.json"
 local _store = nil
-
 local function fileOK()
     return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
 end
-
 local function tryDecode(str)
     if type(str) ~= "string" or str == "" then return nil end
     local ok, parsed = pcall(function() return HttpService:JSONDecode(str) end)
     if ok and type(parsed) == "table" then return parsed end
     return nil
 end
-
 local function loadStore()
     if _store then return _store end
     local data = {}
@@ -57,13 +53,11 @@ local function loadStore()
     _store = data
     return data
 end
-
 function Persist.get(key, default)
     local d = loadStore()
     if d[key] ~= nil then return d[key] end
     return default
 end
-
 function Persist.set(key, value)
     local d = loadStore()
     d[key] = value
@@ -77,7 +71,6 @@ function Persist.set(key, value)
         end
     end
 end
-
 function Persist.clear()
     _store = {}
     _G.VoidPersist = {}
@@ -86,7 +79,6 @@ function Persist.clear()
         pcall(function() writefile(PERSIST_FILE, "{}") end)
     end
 end
-
 -- ============================================================
 -- 累计时间模块（跨 session 累加，不重置）
 -- ============================================================
@@ -103,13 +95,12 @@ end
 local function saveElapsed()
     Persist.set("TotalSeconds", getTotalElapsed())
 end
-
 -- ============================================================
--- 配置读取
+-- 配置读取（新增界面缩放持久化）
 -- ============================================================
 local UI_STYLE = Persist.get("UIStyle", "zvm")
 local LOAD_SCREEN = Persist.get("LoadScreenEnabled", true)
-
+local UI_SCALE = tonumber(Persist.get("UIScale", 1)) or 1
 -- ============================================================
 -- 颜色
 -- ============================================================
@@ -123,7 +114,6 @@ local BASE_JUMP = 50
 local baseSpeed, lastSetSpeed = 16, 16
 local speedToggleDesc
 local spectateTarget, followTarget, spectateSetOn, followSetOn
-
 local State = {
     NoclipEnabled=false, InfiniteJumpEnabled=false, SpeedEnabled=false, JumpEnabled=false,
     ESPHighlightEnabled=false, ESPNameEnabled=false, ESPHealthEnabled=false,
@@ -135,9 +125,8 @@ local State = {
 local ESPObjects, PromptESPObjects = {}, {}
 local infJumpConn, instantConn, promptConn, hitboxConn, noclipConn
 local HitboxOrig = setmetatable({}, {__mode="k"})
-
 -- ============================================================
--- 工具
+-- 工具（重写自适应缩放 + 修复拖动边界）
 -- ============================================================
 local function new(c,p) local i=Instance.new(c);local pt;for k,v in pairs(p or {}) do if k=="Parent" then pt=v else i[k]=v end end;if pt then i.Parent=pt end;return i end
 local function corner(p,r) return new("UICorner",{CornerRadius=UDim.new(0,r),Parent=p}) end
@@ -148,7 +137,38 @@ local function hex(n) local s="" for _=1,n do s=s..string.format("%X",math.rando
 local function techCorners(parent,color,len,thick,trans) for _,s in ipairs({{0,0,len,thick},{0,0,thick,len},{1,0,len,thick},{1,0,thick,len},{0,1,len,thick},{0,1,thick,len},{1,1,len,thick},{1,1,thick,len}}) do new("Frame",{AnchorPoint=Vector2.new(s[1],s[2]),Position=UD.new(s[1],0,s[2],0),Size=UD.fromOffset(s[3],s[4]),BackgroundColor3=color,BackgroundTransparency=trans or 0,BorderSizePixel=0,Parent=parent}) end end
 local function diamond(parent,x,y,sz,color,trans) local d=new("Frame",{Position=UD.fromOffset(x,y),Size=UD.fromOffset(sz,sz),BackgroundColor3=color,BackgroundTransparency=trans or 0,BorderSizePixel=0,Rotation=45,Parent=parent});corner(d,2);return d end
 local function ring(parent,sz,color,thick,trans) local f=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(sz,sz),BackgroundTransparency=1,Parent=parent});corner(f,sz/2);stroke(f,color,thick,trans);return f end
-local function fitScale(g,bw,pd,mn) local s=g:FindFirstChildOfClass("UIScale") or new("UIScale",{Scale=1,Parent=g});local function u() s.Scale=math.clamp((CAM.ViewportSize.X-(pd or 40))/bw,mn or .6,1) end;u();CAM:GetPropertyChangedSignal("ViewportSize"):Connect(u);return s end
+
+-- 【重写】宽高双向自适应缩放，支持用户手动调节倍数
+local function fitScale(g, baseW, baseH, padding, minScale)
+    baseH = baseH or baseW * 2
+    padding = padding or 40
+    minScale = minScale or 0.5
+    local s = g:FindFirstChildOfClass("UIScale") or new("UIScale", {Scale = 1, Parent = g})
+    local baseAuto = 1
+
+    local function update()
+        local vp = CAM.ViewportSize
+        local scaleX = (vp.X - padding) / baseW
+        local scaleY = (vp.Y - padding) / baseH
+        baseAuto = math.min(scaleX, scaleY)
+        baseAuto = math.clamp(baseAuto, minScale, 1.2)
+        s.Scale = math.clamp(baseAuto * UI_SCALE, minScale, 2)
+    end
+
+    update()
+    CAM:GetPropertyChangedSignal("ViewportSize"):Connect(update)
+
+    return {
+        Instance = s,
+        Update = update,
+        SetUserScale = function(val)
+            UI_SCALE = val
+            Persist.set("UIScale", val)
+            update()
+        end
+    }
+end
+
 local function makeAlpha(root)
     local d={}
     local function col(x) local pr
@@ -164,11 +184,25 @@ local function makeAlpha(root)
     function a.tweenTo(t,du) for _,r in ipairs(d) do tw(r.i,du,{[r.p]=r.b+(1-r.b)*t},Enum.EasingStyle.Quart) end end
     return a
 end
+
+-- 【修复】拖动边界，防止小屏拖出可视区域
 local function makeDraggable(t,h,onClick)
     h=h or t
     local dg,ds,sp,mv=false,nil,nil,false
     h.InputBegan:Connect(function(input,gp) if gp then return end if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dg,mv=true,false;ds=input.Position;sp=t.Position end end)
-    UserInputService.InputChanged:Connect(function(input) if not dg then return end if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then local d=input.Position-ds;if d.Magnitude>4 then mv=true end;local vp=CAM.ViewportSize;t.Position=UD.new(0,math.clamp(sp.X.Offset+d.X,-t.AbsoluteSize.X+60,vp.X-60),0,math.clamp(sp.Y.Offset+d.Y,0,vp.Y-30)) end end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not dg then return end
+        if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then
+            local d=input.Position-ds
+            if d.Magnitude>4 then mv=true end
+            local vp=CAM.ViewportSize
+            local absSize = t.AbsoluteSize
+            t.Position=UD.new(
+                0, math.clamp(sp.X.Offset+d.X, -absSize.X + 40, vp.X - 40),
+                0, math.clamp(sp.Y.Offset+d.Y, 0, vp.Y - 40)
+            )
+        end
+    end)
     UserInputService.InputEnded:Connect(function(input) if not dg then return end if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dg=false;if not mv and onClick then task.defer(onClick) end end end)
 end
 local function notify(t,x) pcall(function() StarterGui:SetCore("SendNotification",{Title=t,Text=x,Duration=4}) end) end
@@ -178,9 +212,8 @@ local function fmtTime(sec)
     sec = math.floor(sec)
     return string.format("%02d:%02d:%02d", math.floor(sec/3600), math.floor((sec%3600)/60), sec%60)
 end
-
 -- ============================================================
--- 功能实现
+-- 功能实现（未修改任何作弊逻辑）
 -- ============================================================
 local function setNoclip(enabled)
     State.NoclipEnabled=enabled
@@ -198,7 +231,6 @@ end
 local function applyJump() local _,h=getChar();if not h then return end h.UseJumpPower=true h.JumpPower=State.JumpEnabled and State.CustomJump or BASE_JUMP end
 local function setJump(v) State.CustomJump=v;applyJump() end
 local function setJumpEnabled(v) State.JumpEnabled=v;applyJump() end
-
 local GuardZones={Enabled=false,Size=0,Buttons={},FadeToken=0,Gui=nil}
 local function setupGuardZones()
     if GuardZones.Gui then return end
@@ -235,7 +267,6 @@ local function setGuardEnabled(on)
     applyGuardSize(GuardZones.Size)
 end
 setupGuardZones()
-
 local function stopSpectate() spectateTarget=nil local _,h=getChar() if h then CAM.CameraSubject=h end if spectateSetOn then spectateSetOn(false) end end
 local function stopFollow() followTarget=nil if followSetOn then followSetOn(false) end end
 RunService.Heartbeat:Connect(function(dt)
@@ -269,7 +300,6 @@ RunService.Heartbeat:Connect(function(dt)
         else local tc=followTarget.Character if tc then local thrp=tc:FindFirstChild("HumanoidRootPart") if thrp then local mhrp=char:FindFirstChild("HumanoidRootPart") if mhrp then mhrp.CFrame=CFrame.new(thrp.Position) end end end end
     end
 end)
-
 local function saveHitboxOrig(char)
     if HitboxOrig[char] then return end
     local head=char:FindFirstChild("Head");local root=char:FindFirstChild("HumanoidRootPart")
@@ -303,7 +333,6 @@ end
 local function setHitboxSize(v) State.HitboxSize=v;refreshHitbox() end
 local function setHitboxTransparency(v) State.HitboxTransparency=v;refreshHitbox() end
 local function setHitboxColor(c) State.HitboxColor=c;refreshHitbox() end
-
 local function setInstantInteract(enabled)
     State.InstantInteractEnabled=enabled
     if instantConn then instantConn:Disconnect();instantConn=nil end
@@ -315,7 +344,6 @@ local function setInstantInteract(enabled)
 end
 local function runExternal(url,name) local ok,err=pcall(function() loadstring(game:HttpGet(url))() end);if not ok then notify(name,"脚本加载失败: "..tostring(err)) end end
 local function flyingScript() runExternal("https://pastebin.com/raw/ZBzcTm1f","飞行") end
-
 local function clearPlayerESP(player)
     local d=ESPObjects[player];if not d then return end
     if d.highlight then d.highlight:Destroy() end
@@ -377,7 +405,6 @@ local function updateESPLabels()
 end
 local function refreshAllESP() for _,p in ipairs(Players:GetPlayers()) do if p~=LP then createPlayerESP(p) end end end
 local function clearAllESP() for player,_ in pairs(ESPObjects) do clearPlayerESP(player) end end
-
 local function createPromptESP(prompt)
     if PromptESPObjects[prompt] then return end
     local parent=prompt.Parent
@@ -423,7 +450,6 @@ local function setPromptESP(enabled)
         for prompt,_ in pairs(PromptESPObjects) do clearPromptESP(prompt) end
     end
 end
-
 local fogOrig,atmoOrig=nil,nil
 local function setRemoveFog(enabled)
     State.RemoveFogEnabled=enabled
@@ -453,7 +479,6 @@ local function setNightVision(enabled)
         if nvCC then nvCC:Destroy();nvCC=nil end
     end
 end
-
 local Freecam={Speed=2,Sensitivity=0.01,Enabled=false,Rig=nil,Loop=nil,Yaw=0,Pitch=0,MoveInput=Vector2.zero,Connections={},Touch={Move=nil,Look=nil,MoveStart=nil},_InputInited=false}
 local function InitFreecamInput()
     if Freecam._InputInited then return end Freecam._InputInited=true
@@ -512,7 +537,6 @@ local function StopFreecam()
     if Freecam.Rig then Freecam.Rig:Destroy();Freecam.Rig=nil end
     CAM.CameraType=Enum.CameraType.Custom
 end
-
 local AntiFallEnabled=false;local AntiFallConn=nil
 local function StartAntiFall(ch)
     if AntiFallConn then AntiFallConn:Disconnect();AntiFallConn=nil end
@@ -529,7 +553,6 @@ local function ToggleAntiFall(s)
     else if AntiFallConn then AntiFallConn:Disconnect();AntiFallConn=nil end;notify("防摔落伤害","已关闭") end
 end
 LP.CharacterAdded:Connect(function(c) if AntiFallEnabled then StartAntiFall(c) end end)
-
 local InteractESP={Enabled=false,Color=Color3.fromRGB(0,255,0),Highlights={},Conn=nil}
 local function IsInteractive(o) return o and (o:IsA("ProximityPrompt") or o:IsA("ClickDetector")) end
 local function FindAdornPart(t)
@@ -588,7 +611,6 @@ local function ToggleInteractESP(s)
         if InteractESP.Conn then pcall(function() InteractESP.Conn:Disconnect() end);InteractESP.Conn=nil end
     end
 end
-
 local ESP_SETTINGS={HighlightEnabled=false,TeamCheck=false,SmoothAim=false,WallCheck=false}
 local AimbotTeamWhitelist={};local AimbotTeamWhitelistEnabled=false
 local FOV=120;local Smoothness=0.18;local AimPart="Head";local ShowFOVCircle=true
@@ -697,7 +719,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 end)
-
 local FlingLoop=false;local Flinging=false;local AlreadyNotified={}
 local TP_Loop=false;local TP_LoopConn=nil;local TP_SelectedPlayer=nil
 local function TeleportToPlayer(t)
@@ -851,7 +872,6 @@ local function StopSpin()
     RemoveAnimLock(LP.Character)
 end
 LP.CharacterAdded:Connect(function(c) if SpinEnabled then task.wait(0.5);ApplyAnimLock(c);if not SpinConn then StartSpin() end end end)
-
 local function closeAllFeatures()
     setNoclip(false);setInfiniteJump(false);setInstantInteract(false);setPromptESP(false)
     setRemoveFog(false);setNightVision(false);setHitboxEnabled(false)
@@ -867,7 +887,6 @@ local function closeAllFeatures()
     clearAllESP()
     saveElapsed()
 end
-
 local function onPlayerAdded(player)
     if player==LP then return end
     if State.ESPHighlightEnabled or State.ESPNameEnabled or State.ESPHealthEnabled then task.spawn(function() if player.Character then createPlayerESP(player) end end) end
@@ -901,9 +920,8 @@ task.spawn(function()
         end
     end
 end)
-
 -- ============================================================
--- 加载动画
+-- 加载动画（适配宽高双向缩放）
 -- ============================================================
 local function runLoadScreen()
     local gui=new("ScreenGui",{Name="VoidLoad",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
@@ -997,7 +1015,8 @@ local function runLoadScreen()
     local sFill=new("Frame",{Size=UD.new(0,0,1,0),BackgroundColor3=C.Cyan,BorderSizePixel=0,Parent=sBar});corner(sFill,2);grad(sFill,C.Cyan,C.Purple,0)
     local root=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(340,140),BackgroundColor3=C.Bg,BorderSizePixel=0,Visible=false,ZIndex=101,Parent=gui})
     corner(root,6);stroke(root,C.Cyan,1,0.4);techCorners(root,C.Cyan,14,2,0.1)
-    local scale=fitScale(root,340,40,0.65)
+    -- 加载窗口适配宽高
+    local scale=fitScale(root, 340, 140, 40, 0.65)
     local header=new("Frame",{Size=UD.new(1,0,0,26),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root});corner(header,6)
     new("Frame",{Position=UD.new(0,0,0,20),Size=UD.new(1,0,0,6),BackgroundColor3=C.Panel,BorderSizePixel=0,Parent=root})
     diamond(header,10,8,10,C.Cyan,0)
@@ -1042,7 +1061,7 @@ local function runLoadScreen()
         root:FindFirstChildOfClass("UIStroke").Color=accent;pctLbl.TextColor3=accent
         local so=spinOut:FindFirstChildOfClass("UIStroke");if so then so.Color=accent end
         spinOutDot.BackgroundColor3=accent;spinCore.BackgroundColor3=accent;barFill.BackgroundColor3=accent
-        scale.Scale=0.82;tw(scale,0.55,{Scale=1},Enum.EasingStyle.Back);task.wait(0.14)
+        scale.Instance.Scale=0.82;tw(scale.Instance,0.55,{Scale=1},Enum.EasingStyle.Back);task.wait(0.14)
         local a1,a2=0,0
         local c1=RunService.RenderStepped:Connect(function(dt) a1=a1+dt*300;a2=a2-dt*200;spinOut.Rotation=a1;spinMid.Rotation=a2 end)
         local acc=0
@@ -1055,7 +1074,7 @@ local function runLoadScreen()
         task.wait(dur);c3:Disconnect()
         barFill.Size=UD.new(1,0,1,0);pctLbl.Text="  100%"
         task.wait(0.2);c1:Disconnect();c2:Disconnect()
-        tw(scale,0.32,{Scale=0.9},Enum.EasingStyle.Back);task.wait(0.34);root.Visible=false
+        tw(scale.Instance,0.32,{Scale=0.9},Enum.EasingStyle.Back);task.wait(0.34);root.Visible=false
     end
     task.wait(0.1)
     local aS=makeAlpha(splash)
@@ -1088,9 +1107,8 @@ local function runLoadScreen()
     if animConn then animConn:Disconnect();animConn=nil end
     gui:Destroy()
 end
-
 -- ============================================================
--- ZvmUI 库（内嵌）
+-- ZvmUI 库（内嵌 + 全机型适配）
 -- ============================================================
 local ZvmUI = {}
 local PresetThemes = {
@@ -1108,7 +1126,6 @@ local Theme = {
     SubText = Color3.fromRGB(150,150,180), Stroke = Color3.fromRGB(58,58,84),
 }
 ZvmUI.Theme = Theme
-
 local Animator = {}
 Animator.__index = Animator
 local animators = {}
@@ -1196,7 +1213,6 @@ function Animator:Snap(target)
     for i = 1, #s do s[i].Value = s[i].Target; s[i].Velocity = 0 end
     self:Write(); self.Active = false
 end
-
 local function createUICorner(parent, radius)
     local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, radius); c.Parent = parent; return c
 end
@@ -1253,7 +1269,6 @@ local function makeTitleButton(parent, text, xOffset, hoverColor)
     btn.MouseButton1Up:Connect(function() scaleAnim:Set(1) end)
     return btn
 end
-
 local Window = {}
 Window.__index = Window
 function Window:_registerText(target, value, property, transform)
@@ -1262,7 +1277,7 @@ function Window:_registerText(target, value, property, transform)
         table.insert(self._localizers, { target = target, value = value, property = property, transform = transform })
         target[property] = transform(value[self._locale] or value.zh or value.en or "")
     else
-        target[property] = transform(value or "")
+        target[property] = value or ""
     end
 end
 function Window:SetLocale(locale)
@@ -1557,7 +1572,6 @@ function Window:Divider()
     line.Parent = self.Content; self:_register(line)
     return line
 end
-
 function ZvmUI.CreateWindow(config)
     config = config or {}
     local titleText = config.Title or { zh = "ZvmUI", en = "ZvmUI" }
@@ -1677,7 +1691,8 @@ function ZvmUI.CreateWindow(config)
             if not gui.Parent then return end
             flyBalls(gui, startCenter, targetCenter, 0.6, function()
                 if not gui.Parent then return end
-                rootScaleAnim:Set(1); pill.Visible = false; animating = false
+                rootScaleAnim:Set(math.clamp(baseAutoScale * userScale, 0.5, 2))
+                pill.Visible = false; animating = false
             end)
         end)
     end
@@ -1727,6 +1742,8 @@ function ZvmUI.CreateWindow(config)
             if gui then gui:Destroy() end
         end)
     end)
+
+    -- 【修复】拖动边界限制
     local dragging, dragStart, startPos = false, nil, nil
     table.insert(window._connections, titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1737,16 +1754,53 @@ function ZvmUI.CreateWindow(config)
         if not dragging then return end
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
             local delta = input.Position - dragStart
-            root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            local newX = startPos.X.Offset + delta.X
+            local newY = startPos.Y.Offset + delta.Y
+            local absSize = root.AbsoluteSize
+            local vp = CAM.ViewportSize
+            newX = math.clamp(newX, -absSize.X + 40, vp.X - 40)
+            newY = math.clamp(newY, 0, vp.Y - 40)
+            root.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
         end
     end))
     table.insert(window._connections, UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
     end))
-    rootScaleAnim:Set(1)
+
+    -- 【新增】屏幕自动适配缩放
+    local baseAutoScale = 1
+    local userScale = UI_SCALE
+
+    local function updateWindowScale()
+        local vp = CAM.ViewportSize
+        local w = windowSize.X.Offset
+        local h = windowSize.Y.Offset
+        local scaleX = (vp.X - 40) / w
+        local scaleY = (vp.Y - 40) / h
+        baseAutoScale = math.min(scaleX, scaleY)
+        baseAutoScale = math.clamp(baseAutoScale, 0.5, 1.2)
+        local finalScale = math.clamp(baseAutoScale * userScale, 0.5, 2)
+        if not closing and not minimized then
+            rootScaleAnim:Set(finalScale)
+        end
+    end
+
+    updateWindowScale()
+    CAM:GetPropertyChangedSignal("ViewportSize"):Connect(updateWindowScale)
+
+    function window:SetUIScale(val)
+        userScale = val
+        Persist.set("UIScale", val)
+        updateWindowScale()
+    end
+
+    -- 播放弹出动画
+    task.defer(function()
+        rootScaleAnim:Set(math.clamp(baseAutoScale * userScale, 0.5, 2))
+    end)
+
     return window
 end
-
 -- ============================================================
 -- ZvmUI 辅助行
 -- ============================================================
@@ -1783,7 +1837,6 @@ local function zvmPickPlayer(win, cb)
         task.delay(0.22, function() overlay:Destroy() end)
     end)
 end
-
 local function zvmColorRow(win, text, colors, idx, cb)
     local ZT = ZvmUI.Theme
     local row = new("Frame",{Size=UD.new(1,0,0,44),BackgroundColor3=ZT.Surface,BorderSizePixel=0,Parent=win.Content})
@@ -1806,7 +1859,6 @@ local function zvmColorRow(win, text, colors, idx, cb)
     end
     return row
 end
-
 local function zvmPlayerRow(win, text, onPick)
     local ZT = ZvmUI.Theme
     local row = new("Frame",{Size=UD.new(1,0,0,44),BackgroundColor3=ZT.Surface,BorderSizePixel=0,Parent=win.Content})
@@ -1818,7 +1870,6 @@ local function zvmPlayerRow(win, text, onPick)
     btn.MouseButton1Click:Connect(function() zvmPickPlayer(win, onPick) end)
     return lbl
 end
-
 -- ============================================================
 -- 界面风格切换（持久化）
 -- ============================================================
@@ -1828,9 +1879,8 @@ local function setUIStyle(target)
     Persist.set("UIStyle", target)
     notify("界面切换", "已保存为 "..(target=="zvm" and "ZvmUI" or "经典界面").."，重新加载脚本后生效")
 end
-
 -- ============================================================
--- ZvmUI 主界面
+-- ZvmUI 主界面（新增界面缩放滑块）
 -- ============================================================
 local function buildZvmUI()
     local ZT = ZvmUI.Theme
@@ -1841,7 +1891,6 @@ local function buildZvmUI()
         Locale = "zh",
         Background = "rbxassetid://131769990624851",
     })
-
     -- 主要
     win:Tab({Text = {zh="主要", en="Home"}})
     win:Section({Text = {zh="账户", en="ACCOUNT"}})
@@ -1853,7 +1902,6 @@ local function buildZvmUI()
             task.wait(1)
         end
     end)
-
     win:Section({Text = {zh="记忆与设置", en="MEMORY"}})
     win:Label({Text = "当前界面: "..(UI_STYLE == "zvm" and "ZvmUI" or "经典界面"), Color = ZT.AccentSoft})
     win:Button({Text = {zh="重置所有功能", en="Reset All Features"}, Callback = function()
@@ -1892,7 +1940,14 @@ local function buildZvmUI()
         Default = LOAD_SCREEN,
         Callback = function(on) LOAD_SCREEN = on; State.LoadScreenEnabled = on; Persist.set("LoadScreenEnabled", on) end,
     })
-
+    -- 新增界面缩放调节
+    win:Slider({
+        Text = {zh="界面缩放", en="UI Scale"},
+        Min = 0.5, Max = 1.5, Default = UI_SCALE, Suffix = "x",
+        Callback = function(v)
+            win:SetUIScale(v)
+        end,
+    })
     win:Section({Text = {zh="工具", en="TOOLS"}})
     win:Button({
         Text = {zh="TX Script 全自动翻译", en="TX Script Translate"},
@@ -1914,7 +1969,6 @@ local function buildZvmUI()
         Min = 0, Max = 200, Default = GuardZones.Size, Suffix = " px",
         Callback = function(v) flashGuardZones(v) end,
     })
-
     -- 通用
     win:Tab({Text = {zh="通用", en="General"}})
     win:Toggle({Text = {zh="启用移动速度", en="Speed"}, Default = false, Callback = function(on) State.SpeedEnabled = on end})
@@ -1926,7 +1980,6 @@ local function buildZvmUI()
     win:Toggle({Text = {zh="穿墙模式", en="Noclip"}, Default = State.NoclipEnabled, Callback = function(on) setNoclip(on) end})
     win:Toggle({Text = {zh="秒互动", en="Instant Interact"}, Default = State.InstantInteractEnabled, Callback = function(on) setInstantInteract(on) end})
     win:Toggle({Text = {zh="防摔落伤害", en="Anti Fall"}, Default = false, Callback = function(on) ToggleAntiFall(on) end})
-
     -- 视觉
     win:Tab({Text = {zh="视觉", en="Visual"}})
     win:Toggle({Text = {zh="ESP 高亮", en="ESP Highlight"}, Default = State.ESPHighlightEnabled, Callback = function(on) State.ESPHighlightEnabled = on; refreshAllESP() end})
@@ -1937,7 +1990,6 @@ local function buildZvmUI()
     win:Toggle({Text = {zh="夜视模式", en="Night Vision"}, Default = State.NightVisionEnabled, Callback = function(on) setNightVision(on) end})
     win:Toggle({Text = {zh="自由视角", en="Free Cam"}, Default = false, Callback = function(on) if on then StartFreecam() else StopFreecam() end end})
     win:Slider({Text = {zh="自由视角速度", en="Free Cam Speed"}, Min = 1, Max = 20, Default = 2, Callback = function(v) Freecam.Speed = v end})
-
     -- 剥削
     win:Tab({Text = {zh="剥削", en="Exploit"}})
     local targetLbl
@@ -1977,7 +2029,6 @@ local function buildZvmUI()
     end})
     win:Toggle({Text = {zh="人物自转", en="Spin"}, Default = false, Callback = function(on) SpinEnabled = on; if on then StartSpin() else StopSpin() end end})
     win:Slider({Text = {zh="旋转速度", en="Spin Speed"}, Min = 1, Max = 200, Default = 5, Callback = function(v) SpinSpeed = v end})
-
     -- 碰撞
     win:Tab({Text = {zh="碰撞", en="Hitbox"}})
     win:Toggle({Text = {zh="启用碰撞箱", en="Hitbox Toggle"}, Default = false, Callback = function(on) setHitboxEnabled(on) end})
@@ -1987,7 +2038,6 @@ local function buildZvmUI()
         {Color=Color3.fromRGB(255,215,0)},{Color=Color3.fromRGB(255,60,60)},{Color=Color3.fromRGB(60,150,255)},
         {Color=Color3.fromRGB(60,255,120)},{Color=Color3.fromRGB(180,80,255)},{Color=Color3.fromRGB(255,255,255)}
     }, 1, function(c) setHitboxColor(c) end)
-
     -- 自瞄
     win:Tab({Text = {zh="自瞄", en="Aimbot"}})
     win:Toggle({Text = {zh="自瞄开关", en="Aimbot Toggle"}, Default = false, Callback = function(on) ESP_SETTINGS.HighlightEnabled = on end})
@@ -2023,9 +2073,8 @@ local function buildZvmUI()
         else notify("白名单","你没有队伍") end
     end})
 end
-
 -- ============================================================
--- 经典 UI 主界面
+-- 经典 UI 主界面（全适配优化）
 -- ============================================================
 local function buildClassicUI()
     local gui=new("ScreenGui",{Name="VoidUI",ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=9999,Parent=PG})
@@ -2037,7 +2086,8 @@ local function buildClassicUI()
     corner(main:FindFirstChild("VoidBackground"),8)
     local mainStroke=stroke(main,C.Cyan,1,0.5)
     techCorners(main,C.Cyan,14,2,0.1)
-    local mainScale=fitScale(main,WIN_W,30,0.75)
+    -- 宽高双向自适应缩放
+    local mainScale=fitScale(main, WIN_W, WIN_H, 30, 0.5)
     local topGrad=grad(new("Frame",{Size=UD.new(1,-24,0,2),Position=UD.new(0,12,0,0),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,Parent=main}),C.Cyan,C.Purple,0)
     topGrad.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(1,1)})
     local titleBar=new("Frame",{Size=UD.new(1,0,0,32),BackgroundColor3=C.Panel,BackgroundTransparency=0.35,BorderSizePixel=0,Parent=main});corner(titleBar,8)
@@ -2064,7 +2114,8 @@ local function buildClassicUI()
     for i,name in ipairs(tabs) do tabBtns[i]=new("TextButton",{Position=UD.new((i-1)/tabCount,0,0,0),Size=UD.new(1/tabCount,0,1,0),BackgroundTransparency=1,Text=name,TextColor3=(i==1) and C.Text or C.Dim,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Center,Parent=tabBar}) end
     local content=new("Frame",{Position=UD.new(0,0,0,58),Size=UD.new(1,0,1,-84),BackgroundTransparency=1,ClipsDescendants=true,Parent=main})
     local pages={}
-    local pageCanvas={420,400,420,620,190,560}
+    -- 增加首页高度容纳缩放滑块
+    local pageCanvas={480,400,420,620,190,560}
     for i=1,tabCount do
         pages[i]=new("ScrollingFrame",{Position=UD.new(0,0,0,0),Size=UD.fromScale(1,1),BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=C.Cyan,CanvasSize=UD.new(0,0,0,pageCanvas[i] or 300),ScrollingDirection=Enum.ScrollingDirection.Y,Visible=(i==1),Parent=content})
     end
@@ -2184,7 +2235,7 @@ local function buildClassicUI()
         new("TextLabel",{Position=UD.fromOffset(12,4),Size=UD.new(1,-120,0,14),BackgroundTransparency=1,Text=label,TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
         new("TextLabel",{Position=UD.fromOffset(12,19),Size=UD.new(1,-120,0,11),BackgroundTransparency=1,Text=desc,TextColor3=C.Dim,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=row})
         local txt=btnText or "执行"
-        local btn=new("TextButton",{AnchorPoint=Vector2.new(1,.5),Position=UD.new(1,-12,.5,0),Size=UD.fromOffset(60,22),BackgroundColor3=accent,BorderSizePixel=0,Text=txt,TextColor3=C.Bg,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false,Parent=row});corner(btn,4)
+        local btn=new("TextButton",{AnchorPoint=Vector2.new(1,0.5),Position=UD.new(1,-12,0.5,0),Size=UD.fromOffset(60,22),BackgroundColor3=accent,BorderSizePixel=0,Text=txt,TextColor3=C.Bg,Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false,Parent=row});corner(btn,4)
         local active=false
         local function setActive(v)
             active=v
@@ -2283,6 +2334,10 @@ local function buildClassicUI()
         end)
         makeToggle(p,288,"屏幕防误触","LOCK  EDGE  TOUCH",C.Red,false,function(on) setGuardEnabled(on) end)
         makeSlider(p,328,"防误触范围",C.Red,0,200,GuardZones.Size," px",0,function(v) flashGuardZones(v) end)
+        -- 新增界面缩放滑块
+        makeSlider(p, 370, "界面缩放", C.Cyan, 0.5, 1.5, UI_SCALE, "x", 2, function(v)
+            mainScale.SetUserScale(v)
+        end)
     end
     do
         local p=pages[2]
@@ -2425,7 +2480,7 @@ local function buildClassicUI()
     corner(mini,MINI/2);stroke(mini,C.Cyan,1.4,0.2)
     local msc=new("UIScale",{Scale=1,Parent=mini})
     local orb=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(30,30),BackgroundTransparency=1,Parent=mini})
-    local od=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.new(1,0,.5,0),Size=UD.fromOffset(4,4),BackgroundColor3=C.Cyan,BorderSizePixel=0,Parent=orb});corner(od,2)
+    local od=new("Frame",{AnchorPoint=Vector2.new(1,0,.5,0),Size=UD.fromOffset(4,4),BackgroundColor3=C.Cyan,BorderSizePixel=0,Parent=orb});corner(od,2)
     local mc2=diamond(mini,15,15,16,C.Cyan,0);grad(mc2,C.Cyan,C.Purple,45)
     diamond(mini,19,19,8,C.Bg,0)
     RunService.RenderStepped:Connect(function(dt)
@@ -2437,25 +2492,25 @@ local function buildClassicUI()
     mini:GetPropertyChangedSignal("Position"):Connect(function() if mini.Visible then miniHomePos=mini.Position end end)
     makeDraggable(mini,mini,function()
         mini.Visible=false;main.Position=mainHomePos;main.Visible=true
-        mainScale.Scale=0.72;tw(mainScale,0.55,{Scale=1},Enum.EasingStyle.Back)
+        mainScale.Instance.Scale=0.72;tw(mainScale.Instance,0.55,{Scale=1},Enum.EasingStyle.Back)
     end)
     makeDraggable(main,dragHandle)
     minBtn.Activated:Connect(function()
         tw(minBtn,0.08,{BackgroundColor3=C.Cyan});tw(minBtn,0.2,{BackgroundColor3=C.Panel2})
-        main.Visible=false;mainScale.Scale=1
+        main.Visible=false;mainScale.Instance.Scale=1
         mini.Position=UD.fromOffset(CAM.ViewportSize.X-MINI-20,CAM.ViewportSize.Y*0.4);miniHomePos=mini.Position
         mini.Visible=true;msc.Scale=0.3;tw(msc,0.5,{Scale=1},Enum.EasingStyle.Back)
     end)
     closeBtn.Activated:Connect(function()
         tw(closeBtn,0.08,{BackgroundColor3=C.Red})
-        tw(mainScale,0.26,{Scale=0.8},Enum.EasingStyle.Back)
+        tw(mainScale.Instance,0.26,{Scale=0.8},Enum.EasingStyle.Back)
         task.wait(0.28)
-        mini.Visible=false;main.Visible=false;mainScale.Scale=1
+        mini.Visible=false;main.Visible=false;mainScale.Instance.Scale=1
         closeAllFeatures()
         task.wait(0.05);gui:Destroy()
     end)
-    main.Visible=true;mainScale.Scale=0.78
-    tw(mainScale,0.6,{Scale=1},Enum.EasingStyle.Back)
+    main.Visible=true;mainScale.Instance.Scale=0.78
+    tw(mainScale.Instance,0.6,{Scale=1},Enum.EasingStyle.Back)
     task.spawn(function()
         while main.Parent do
             local p2=(math.sin(os.clock()*2)+1)/2
@@ -2466,7 +2521,6 @@ local function buildClassicUI()
         end
     end)
 end
-
 -- ============================================================
 -- 定时保存累计时间 + 启动
 -- ============================================================
@@ -2476,6 +2530,5 @@ task.spawn(function()
         saveElapsed()
     end
 end)
-
 if LOAD_SCREEN then runLoadScreen() end
 if UI_STYLE == "classic" then buildClassicUI() else buildZvmUI() end
