@@ -1748,13 +1748,19 @@ function ZvmUI.CreateWindow(config)
             if not gui.Parent then return end
             flyBalls(gui, savedCenter, targetCenter, 0.6, function()
                 if not gui.Parent then return end
-                pill.Visible = true; pillScaleAnim:Set(1); animating = false
+                -- 最小化动画结束后真正隐藏主窗口，避免残留 UI 或继续拦截输入。
+                root.Visible = false
+                pill.Visible = true
+                pillScaleAnim:Set(1)
+                animating = false
             end)
         end)
     end
     local function doRestore()
         if not minimized or animating or closing then return end
         animating = true; minimized = false
+        -- 在恢复动画开始前先显示主窗口，再播放缩放动画。
+        root.Visible = true
         local startCenter = getPillCenter(); local targetCenter = savedCenter
         pillScaleAnim:Set(0)
         task.delay(0.08, function()
