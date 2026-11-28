@@ -1842,6 +1842,66 @@ local function buildZvmUI()
         Background = "rbxassetid://131769990624851",
     })
 
+    ------------------------------------------------------------
+    -- 优化：界面缩放 + 机型适配（保证 UI 不超出屏幕）
+    ------------------------------------------------------------
+    local BASE_W, BASE_H = 600, 480
+    local UI_MARGIN = 24
+    local ZVM_SCALE_KEY = "ZvmUIScale"
+    local zvmUserScale = tonumber(Persist.get(ZVM_SCALE_KEY, 1)) or 1
+    zvmUserScale = math.clamp(zvmUserScale, 0.5, 1.5)
+
+    local fitFrame = Instance.new("Frame")
+    fitFrame.Name = "ZvmFitFrame"
+    fitFrame.Size = UDim2.fromScale(1, 1)
+    fitFrame.Position = UDim2.fromOffset(0, 0)
+    fitFrame.BackgroundTransparency = 1
+    fitFrame.BorderSizePixel = 0
+    fitFrame.Parent = win.Root
+
+    local fitScale = Instance.new("UIScale")
+    fitScale.Scale = 1
+    fitScale.Parent = fitFrame
+
+    win.Main.Parent = fitFrame
+
+    local scaleInfoLbl
+
+    local function computeMaxFit()
+        local vp = CAM.ViewportSize
+        local availW = math.max(vp.X - UI_MARGIN * 2, 120)
+        local availH = math.max(vp.Y - UI_MARGIN * 2, 120)
+        return math.min(availW / BASE_W, availH / BASE_H)
+    end
+
+    local function applyFit()
+        local maxFit = computeMaxFit()
+        local final = math.min(zvmUserScale, maxFit)
+        fitScale.Scale = final
+        if scaleInfoLbl and scaleInfoLbl.Parent then
+            scaleInfoLbl.Text = string.format(
+                "实际缩放 %d%%   ·   适配上限 %d%%",
+                math.floor(final * 100 + 0.5),
+                math.floor(maxFit * 100 + 0.5)
+            )
+        end
+    end
+    applyFit()
+
+    table.insert(win._connections, CAM:GetPropertyChangedSignal("ViewportSize"):Connect(applyFit))
+
+    local saveScaleToken = 0
+    local function scheduleSaveScale(v)
+        saveScaleToken = saveScaleToken + 1
+        local myToken = saveScaleToken
+        task.delay(0.5, function()
+            if saveScaleToken == myToken then
+                Persist.set(ZVM_SCALE_KEY, v)
+            end
+        end)
+    end
+    ------------------------------------------------------------
+
     -- 主要
     win:Tab({Text = {zh="主要", en="Home"}})
     win:Section({Text = {zh="账户", en="ACCOUNT"}})
@@ -1891,6 +1951,19 @@ local function buildZvmUI()
         Text = {zh="启动加载界面", en="Load Screen"},
         Default = LOAD_SCREEN,
         Callback = function(on) LOAD_SCREEN = on; State.LoadScreenEnabled = on; Persist.set("LoadScreenEnabled", on) end,
+    })
+
+    win:Section({Text = {zh="界面", en="INTERFACE"}})
+    scaleInfoLbl = win:Label({Text = "", Color = ZT.AccentSoft})
+    applyFit()
+    win:Slider({
+        Text = {zh="界面缩放", en="UI Scale"},
+        Min = 0.5, Max = 1.5, Default = zvmUserScale, Suffix = "x",
+        Callback = function(v)
+            zvmUserScale = v
+            applyFit()
+            scheduleSaveScale(v)
+        end,
     })
 
     win:Section({Text = {zh="工具", en="TOOLS"}})
