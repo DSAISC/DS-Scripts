@@ -148,77 +148,64 @@ local function hex(n) local s="" for _=1,n do s=s..string.format("%X",math.rando
 local function techCorners(parent,color,len,thick,trans) for _,s in ipairs({{0,0,len,thick},{0,0,thick,len},{1,0,len,thick},{1,0,thick,len},{0,1,len,thick},{0,1,thick,len},{1,1,len,thick},{1,1,thick,len}}) do new("Frame",{AnchorPoint=Vector2.new(s[1],s[2]),Position=UD.new(s[1],0,s[2],0),Size=UD.fromOffset(s[3],s[4]),BackgroundColor3=color,BackgroundTransparency=trans or 0,BorderSizePixel=0,Parent=parent}) end end
 local function diamond(parent,x,y,sz,color,trans) local d=new("Frame",{Position=UD.fromOffset(x,y),Size=UD.fromOffset(sz,sz),BackgroundColor3=color,BackgroundTransparency=trans or 0,BorderSizePixel=0,Rotation=45,Parent=parent});corner(d,2);return d end
 local function ring(parent,sz,color,thick,trans) local f=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(sz,sz),BackgroundTransparency=1,Parent=parent});corner(f,sz/2);stroke(f,color,thick,trans);return f end
--- 按屏幕宽高自动缩放；窗口尺寸变化或屏幕旋转时都会重新计算。
 local function fitScale(g,bw,pd,mn,bh)
-    local s=g:FindFirstChildOfClass("UIScale") or new("UIScale",{Scale=1,Parent=g})
+    local s=Instance.new("UIScale");s.Scale=1;s.Parent=g
     local margin=pd or 24
-    local minScale=mn or 0.4
     local function update()
         if not g.Parent then return end
         local camera=workspace.CurrentCamera or CAM
-        local viewport=camera.ViewportSize
-        local baseW=g.Size.X.Offset>0 and g.Size.X.Offset or bw or 1
-        local baseH=g.Size.Y.Offset>0 and g.Size.Y.Offset or bh or 1
-        local sx=(viewport.X-margin)/math.max(baseW,1)
-        local sy=(viewport.Y-margin)/math.max(baseH,1)
-        -- 极小视口下允许低于常规最小值，优先保证窗口不超出屏幕。
-        s.Scale=math.max(0.25,math.min(1,sx,sy))
+        local vp=camera.ViewportSize
+        local baseW=(g.Size.X.Offset>0 and g.Size.X.Offset) or bw or 1
+        local baseH=(g.Size.Y.Offset>0 and g.Size.Y.Offset) or bh or 1
+        local sx=(vp.X-margin)/math.max(baseW,1)
+        local sy=(vp.Y-margin)/math.max(baseH,1)
+        s.Scale=math.max(0.15,math.min(1,sx,sy))
     end
     update()
-    local viewportConn=CAM:GetPropertyChangedSignal("ViewportSize"):Connect(update)
-    local sizeConn=g:GetPropertyChangedSignal("Size"):Connect(update)
-    g.Destroying:Connect(function()
-        viewportConn:Disconnect()
-        sizeConn:Disconnect()
-    end)
+    local vc=CAM:GetPropertyChangedSignal("ViewportSize"):Connect(update)
+    local sc=g:GetPropertyChangedSignal("Size"):Connect(update)
+    g.Destroying:Connect(function() vc:Disconnect();sc:Disconnect() end)
     return s
 end
 
--- 右下角拖拽缩放。尺寸限制和 UIScale 联动，避免窗口被拉出屏幕。
-local function addResizeHandle(target, scaleObj, minW, minH, maxW, maxH)
-    local grip=new("TextButton",{
-        Name="ResizeHandle",AnchorPoint=Vector2.new(1,1),Position=UDim2.new(1,-3,1,-3),
-        Size=UDim2.fromOffset(20,20),BackgroundTransparency=1,Text="",AutoButtonColor=false,
-        ZIndex=500,Parent=target,
-    })
+-- 独立的手动缩放把手；不接管窗口动画 UIScale，避免破坏原有开合效果。
+local function addWindowResize(root,surface,minW,minH,maxW,maxH)
+    local grip=Instance.new("TextButton")
+    grip.Name="WindowResizeHandle";grip.AnchorPoint=Vector2.new(1,1)
+    grip.Position=UDim2.new(1,-4,1,-4);grip.Size=UDim2.fromOffset(18,18)
+    grip.BackgroundTransparency=1;grip.Text="";grip.AutoButtonColor=false
+    grip.ZIndex=200;grip.Parent=surface
     for i=0,2 do
-        new("Frame",{
-            AnchorPoint=Vector2.new(1,1),Position=UDim2.new(1,-(3+i*4),1,-3),
-            Size=UDim2.fromOffset(2,7-i*2),Rotation=-45,
-            BackgroundColor3=C.Cyan,BackgroundTransparency=0.15,BorderSizePixel=0,
-            ZIndex=501,Parent=grip,
-        })
+        local mark=Instance.new("Frame")
+        mark.AnchorPoint=Vector2.new(1,1);mark.Position=UDim2.new(1,-(3+i*4),1,-3)
+        mark.Size=UDim2.fromOffset(2,7-i*2);mark.Rotation=-45
+        mark.BackgroundColor3=Theme.Accent;mark.BackgroundTransparency=0.15
+        mark.BorderSizePixel=0;mark.ZIndex=201;mark.Parent=grip
     end
-    local dragging=false
-    local startInput,startSize
-    local changedConn,endedConn
+    local dragging=false;local startPos,startSize
     grip.InputBegan:Connect(function(input)
-        if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
-        dragging=true
-        startInput=input.Position
-        startSize=target.Size
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            dragging=true;startPos=input.Position;startSize=root.Size
+        end
     end)
-    changedConn=UserInputService.InputChanged:Connect(function(input)
+    local moveConn=UserInputService.InputChanged:Connect(function(input)
         if not dragging then return end
         if input.UserInputType~=Enum.UserInputType.MouseMovement and input.UserInputType~=Enum.UserInputType.Touch then return end
-        local scale=math.max(scaleObj.Scale,0.25)
-        local delta=(input.Position-startInput)/scale
-        local camera=workspace.CurrentCamera or CAM
-        local viewport=camera.ViewportSize
-        local availableW=math.max(minW,viewport.X-24)/scale
-        local availableH=math.max(minH,viewport.Y-24)/scale
-        local width=math.clamp(startSize.X.Offset+delta.X,minW,math.min(maxW,availableW))
-        local height=math.clamp(startSize.Y.Offset+delta.Y,minH,math.min(maxH,availableH))
-        target.Size=UDim2.fromOffset(width,height)
+        local camera=workspace.CurrentCamera or CAM;local vp=camera.ViewportSize
+        local scaleObj=root:FindFirstChildOfClass("UIScale");local scale=scaleObj and math.max(scaleObj.Scale,0.15) or 1
+        local delta=(input.Position-startPos)/scale
+        local minWidth=math.min(minW,math.max(180,vp.X-24))
+        local minHeight=math.min(minH,math.max(160,vp.Y-24))
+        local capW=math.min(maxW,math.max(minWidth,vp.X-24))
+        local capH=math.min(maxH,math.max(minHeight,vp.Y-24))
+        local width=math.clamp(startSize.X.Offset+delta.X,minWidth,capW)
+        local height=math.clamp(startSize.Y.Offset+delta.Y,minHeight,capH)
+        root.Size=UDim2.fromOffset(width,height)
     end)
-    endedConn=UserInputService.InputEnded:Connect(function(input)
+    local endConn=UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=false end
     end)
-    target.Destroying:Connect(function()
-        if changedConn then changedConn:Disconnect() end
-        if endedConn then endedConn:Disconnect() end
-    end)
-    return grip
+    root.Destroying:Connect(function()moveConn:Disconnect();endConn:Disconnect()end)
 end
 local function makeAlpha(root)
     local d={}
@@ -239,17 +226,7 @@ local function makeDraggable(t,h,onClick)
     h=h or t
     local dg,ds,sp,mv=false,nil,nil,false
     h.InputBegan:Connect(function(input,gp) if gp then return end if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dg,mv=true,false;ds=input.Position;sp=t.Position end end)
-    UserInputService.InputChanged:Connect(function(input)
-        if not dg then return end
-        if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then
-            local d=input.Position-ds
-            if d.Magnitude>4 then mv=true end
-            local vp=(workspace.CurrentCamera or CAM).ViewportSize
-            local maxX=math.max(0,vp.X-t.AbsoluteSize.X)
-            local maxY=math.max(0,vp.Y-t.AbsoluteSize.Y)
-            t.Position=UD.new(0,math.clamp(sp.X.Offset+d.X,0,maxX),0,math.clamp(sp.Y.Offset+d.Y,0,maxY))
-        end
-    end)
+    UserInputService.InputChanged:Connect(function(input) if not dg then return end if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then local d=input.Position-ds;if d.Magnitude>4 then mv=true end;local vp=CAM.ViewportSize;t.Position=UD.new(0,math.clamp(sp.X.Offset+d.X,-t.AbsoluteSize.X+60,vp.X-60),0,math.clamp(sp.Y.Offset+d.Y,0,vp.Y-30)) end end)
     UserInputService.InputEnded:Connect(function(input) if not dg then return end if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dg=false;if not mv and onClick then task.defer(onClick) end end end)
 end
 local function notify(t,x) pcall(function() StarterGui:SetCore("SendNotification",{Title=t,Text=x,Duration=4}) end) end
@@ -1653,15 +1630,14 @@ function ZvmUI.CreateWindow(config)
     local root = Instance.new("Frame")
     root.AnchorPoint = Vector2.new(0.5,0.5); root.Position = UDim2.fromScale(0.5,0.5)
     root.Size = windowSize; root.BackgroundTransparency = 1; root.Parent = gui
-    local responsiveScale = Instance.new("UIScale"); responsiveScale.Scale = 1; responsiveScale.Parent = root
-    fitScale(root, windowSize.X.Offset, 24, 0.4, windowSize.Y.Offset)
-    addResizeHandle(root, responsiveScale, 480, 360, 900, 720)
+    local responsiveScale = fitScale(root, windowSize.X.Offset, 24, 0.15, windowSize.Y.Offset)
     local rootScale = Instance.new("UIScale"); rootScale.Scale = 0; rootScale.Parent = root
     local rootScaleAnim = Animator.new(rootScale, "Scale", 220, 15, 0)
     local main = Instance.new("Frame")
     main.Size = UDim2.fromScale(1,1); main.BackgroundColor3 = Theme.Background
     main.BorderSizePixel = 0; main.ClipsDescendants = true; main.Parent = root
     createUICorner(main, 18); createUIStroke(main, Theme.Stroke, 1)
+    addWindowResize(root,main,360,280,1000,800)
     if config.Background then
         local bg = Instance.new("ImageLabel")
         bg.Name = "ZvmBackground"
@@ -1748,19 +1724,13 @@ function ZvmUI.CreateWindow(config)
             if not gui.Parent then return end
             flyBalls(gui, savedCenter, targetCenter, 0.6, function()
                 if not gui.Parent then return end
-                -- 最小化动画结束后真正隐藏主窗口，避免残留 UI 或继续拦截输入。
-                root.Visible = false
-                pill.Visible = true
-                pillScaleAnim:Set(1)
-                animating = false
+                pill.Visible = true; pillScaleAnim:Set(1); animating = false
             end)
         end)
     end
     local function doRestore()
         if not minimized or animating or closing then return end
         animating = true; minimized = false
-        -- 在恢复动画开始前先显示主窗口，再播放缩放动画。
-        root.Visible = true
         local startCenter = getPillCenter(); local targetCenter = savedCenter
         pillScaleAnim:Set(0)
         task.delay(0.08, function()
@@ -1820,21 +1790,14 @@ function ZvmUI.CreateWindow(config)
     local dragging, dragStart, startPos = false, nil, nil
     table.insert(window._connections, titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = input.Position
-            startPos = Vector2.new(root.AbsolutePosition.X + root.AbsoluteSize.X/2, root.AbsolutePosition.Y + root.AbsoluteSize.Y/2)
+            dragging = true; dragStart = input.Position; startPos = root.Position
         end
     end))
     table.insert(window._connections, UserInputService.InputChanged:Connect(function(input)
         if not dragging then return end
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
             local delta = input.Position - dragStart
-            local camera = workspace.CurrentCamera or CAM
-            local viewport = camera.ViewportSize
-            local halfW = root.AbsoluteSize.X / 2
-            local halfH = root.AbsoluteSize.Y / 2
-            local x = math.clamp(startPos.X + delta.X, halfW, math.max(halfW, viewport.X-halfW))
-            local y = math.clamp(startPos.Y + delta.Y, halfH, math.max(halfH, viewport.Y-halfH))
-            root.Position = UDim2.new(0, x, 0, y)
+            root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end))
     table.insert(window._connections, UserInputService.InputEnded:Connect(function(input)
@@ -2134,9 +2097,9 @@ local function buildClassicUI()
     corner(main:FindFirstChild("VoidBackground"),8)
     local mainStroke=stroke(main,C.Cyan,1,0.5)
     techCorners(main,C.Cyan,14,2,0.1)
-    local mainScale=fitScale(main,WIN_W,24,0.4,WIN_H)
-    addResizeHandle(main,mainScale,280,320,600,700)
-    local mainAnimScale=new("UIScale",{Scale=1,Parent=main})
+    local mainScale=fitScale(main,WIN_W,24,0.15,WIN_H)
+    local mainAnimScale=Instance.new("UIScale");mainAnimScale.Scale=1;mainAnimScale.Parent=main
+    addWindowResize(main,main,280,300,600,700)
     local topGrad=grad(new("Frame",{Size=UD.new(1,-24,0,2),Position=UD.new(0,12,0,0),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,Parent=main}),C.Cyan,C.Purple,0)
     topGrad.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(1,1)})
     local titleBar=new("Frame",{Size=UD.new(1,0,0,32),BackgroundColor3=C.Panel,BackgroundTransparency=0.35,BorderSizePixel=0,Parent=main});corner(titleBar,8)
@@ -2504,7 +2467,7 @@ local function buildClassicUI()
         oldPage.Visible=false;newPage.Visible=true
         newPage.Position=UD.new(0,18,0,0)
         tw(newPage,0.42,{Position=UD.new(0,0,0,0)},Enum.EasingStyle.Back)
-        tw(tabHighlight,0.34,{Position=UD.fromOffset((idx-1)/tabCount*main.Size.X.Offset,23)},Enum.EasingStyle.Back)
+        tw(tabHighlight,0.34,{Position=UD.fromOffset((idx-1)/tabCount*WIN_W,23)},Enum.EasingStyle.Back)
         currentTab=idx
     end
     for i,b in ipairs(tabBtns) do
@@ -2539,14 +2502,6 @@ local function buildClassicUI()
         mainAnimScale.Scale=0.72;tw(mainAnimScale,0.55,{Scale=1},Enum.EasingStyle.Back)
     end)
     makeDraggable(main,dragHandle)
-    local viewportConn=CAM:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-        local vp=CAM.ViewportSize
-        local w,h=main.AbsoluteSize.X,main.AbsoluteSize.Y
-        local x=math.clamp(main.Position.X.Offset,0,math.max(0,vp.X-w))
-        local y=math.clamp(main.Position.Y.Offset,0,math.max(0,vp.Y-h))
-        main.Position=UD.fromOffset(x,y)
-    end)
-    gui.Destroying:Connect(function() viewportConn:Disconnect() end)
     minBtn.Activated:Connect(function()
         tw(minBtn,0.08,{BackgroundColor3=C.Cyan});tw(minBtn,0.2,{BackgroundColor3=C.Panel2})
         main.Visible=false;mainAnimScale.Scale=1
