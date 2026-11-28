@@ -179,7 +179,7 @@ local function addWindowResize(root,surface,minW,minH,maxW,maxH)
         local mark=Instance.new("Frame")
         mark.AnchorPoint=Vector2.new(1,1);mark.Position=UDim2.new(1,-(3+i*4),1,-3)
         mark.Size=UDim2.fromOffset(2,7-i*2);mark.Rotation=-45
-        mark.BackgroundColor3=Theme.Accent;mark.BackgroundTransparency=0.15
+        mark.BackgroundColor3=C.Cyan;mark.BackgroundTransparency=0.15
         mark.BorderSizePixel=0;mark.ZIndex=201;mark.Parent=grip
     end
     local dragging=false;local startPos,startSize
