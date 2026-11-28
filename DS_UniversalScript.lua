@@ -148,64 +148,17 @@ local function hex(n) local s="" for _=1,n do s=s..string.format("%X",math.rando
 local function techCorners(parent,color,len,thick,trans) for _,s in ipairs({{0,0,len,thick},{0,0,thick,len},{1,0,len,thick},{1,0,thick,len},{0,1,len,thick},{0,1,thick,len},{1,1,len,thick},{1,1,thick,len}}) do new("Frame",{AnchorPoint=Vector2.new(s[1],s[2]),Position=UD.new(s[1],0,s[2],0),Size=UD.fromOffset(s[3],s[4]),BackgroundColor3=color,BackgroundTransparency=trans or 0,BorderSizePixel=0,Parent=parent}) end end
 local function diamond(parent,x,y,sz,color,trans) local d=new("Frame",{Position=UD.fromOffset(x,y),Size=UD.fromOffset(sz,sz),BackgroundColor3=color,BackgroundTransparency=trans or 0,BorderSizePixel=0,Rotation=45,Parent=parent});corner(d,2);return d end
 local function ring(parent,sz,color,thick,trans) local f=new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(sz,sz),BackgroundTransparency=1,Parent=parent});corner(f,sz/2);stroke(f,color,thick,trans);return f end
-local function fitScale(g,bw,pd,mn,bh)
-    local s=Instance.new("UIScale");s.Scale=1;s.Parent=g
-    local margin=pd or 24
-    local function update()
-        if not g.Parent then return end
-        local camera=workspace.CurrentCamera or CAM
-        local vp=camera.ViewportSize
-        local baseW=(g.Size.X.Offset>0 and g.Size.X.Offset) or bw or 1
-        local baseH=(g.Size.Y.Offset>0 and g.Size.Y.Offset) or bh or 1
-        local sx=(vp.X-margin)/math.max(baseW,1)
-        local sy=(vp.Y-margin)/math.max(baseH,1)
-        s.Scale=math.max(0.15,math.min(1,sx,sy))
+local function fitScale(g,bw,pd,mn)
+    local s=g:FindFirstChildOfClass("UIScale") or new("UIScale",{Scale=1,Parent=g})
+    local function u()
+        local vp=CAM.ViewportSize
+        local bh=(g.Size.Y.Offset>0 and g.Size.Y.Offset) or bw
+        local pad=pd or 16
+        s.Scale=math.clamp(math.min((vp.X-pad)/bw,(vp.Y-pad)/bh,1),mn or .4,1)
     end
-    update()
-    local vc=CAM:GetPropertyChangedSignal("ViewportSize"):Connect(update)
-    local sc=g:GetPropertyChangedSignal("Size"):Connect(update)
-    g.Destroying:Connect(function() vc:Disconnect();sc:Disconnect() end)
+    u()
+    CAM:GetPropertyChangedSignal("ViewportSize"):Connect(u)
     return s
-end
-
--- 独立的手动缩放把手；不接管窗口动画 UIScale，避免破坏原有开合效果。
-local function addWindowResize(root,surface,minW,minH,maxW,maxH)
-    local grip=Instance.new("TextButton")
-    grip.Name="WindowResizeHandle";grip.AnchorPoint=Vector2.new(1,1)
-    grip.Position=UDim2.new(1,-4,1,-4);grip.Size=UDim2.fromOffset(18,18)
-    grip.BackgroundTransparency=1;grip.Text="";grip.AutoButtonColor=false
-    grip.ZIndex=200;grip.Parent=surface
-    for i=0,2 do
-        local mark=Instance.new("Frame")
-        mark.AnchorPoint=Vector2.new(1,1);mark.Position=UDim2.new(1,-(3+i*4),1,-3)
-        mark.Size=UDim2.fromOffset(2,7-i*2);mark.Rotation=-45
-        mark.BackgroundColor3=C.Cyan;mark.BackgroundTransparency=0.15
-        mark.BorderSizePixel=0;mark.ZIndex=201;mark.Parent=grip
-    end
-    local dragging=false;local startPos,startSize
-    grip.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            dragging=true;startPos=input.Position;startSize=root.Size
-        end
-    end)
-    local moveConn=UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if input.UserInputType~=Enum.UserInputType.MouseMovement and input.UserInputType~=Enum.UserInputType.Touch then return end
-        local camera=workspace.CurrentCamera or CAM;local vp=camera.ViewportSize
-        local scaleObj=root:FindFirstChildOfClass("UIScale");local scale=scaleObj and math.max(scaleObj.Scale,0.15) or 1
-        local delta=(input.Position-startPos)/scale
-        local minWidth=math.min(minW,math.max(180,vp.X-24))
-        local minHeight=math.min(minH,math.max(160,vp.Y-24))
-        local capW=math.min(maxW,math.max(minWidth,vp.X-24))
-        local capH=math.min(maxH,math.max(minHeight,vp.Y-24))
-        local width=math.clamp(startSize.X.Offset+delta.X,minWidth,capW)
-        local height=math.clamp(startSize.Y.Offset+delta.Y,minHeight,capH)
-        root.Size=UDim2.fromOffset(width,height)
-    end)
-    local endConn=UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=false end
-    end)
-    root.Destroying:Connect(function()moveConn:Disconnect();endConn:Disconnect()end)
 end
 local function makeAlpha(root)
     local d={}
@@ -1630,14 +1583,22 @@ function ZvmUI.CreateWindow(config)
     local root = Instance.new("Frame")
     root.AnchorPoint = Vector2.new(0.5,0.5); root.Position = UDim2.fromScale(0.5,0.5)
     root.Size = windowSize; root.BackgroundTransparency = 1; root.Parent = gui
-    local responsiveScale = fitScale(root, windowSize.X.Offset, 24, 0.15, windowSize.Y.Offset)
     local rootScale = Instance.new("UIScale"); rootScale.Scale = 0; rootScale.Parent = root
+    local rootFitScale = 1
+    local function updateRootFit()
+        local vp = CAM.ViewportSize
+        local fit = math.min((vp.X - 20) / windowSize.X.Offset, (vp.Y - 20) / windowSize.Y.Offset, 1)
+        rootFitScale = math.max(0.35, fit)
+        rootScale.Scale = rootFitScale
+        root.Position = UDim2.fromScale(0.5, 0.5)
+    end
+    updateRootFit()
+    local viewportFitConn = CAM:GetPropertyChangedSignal("ViewportSize"):Connect(updateRootFit)
     local rootScaleAnim = Animator.new(rootScale, "Scale", 220, 15, 0)
     local main = Instance.new("Frame")
     main.Size = UDim2.fromScale(1,1); main.BackgroundColor3 = Theme.Background
     main.BorderSizePixel = 0; main.ClipsDescendants = true; main.Parent = root
     createUICorner(main, 18); createUIStroke(main, Theme.Stroke, 1)
-    addWindowResize(root,main,360,280,1000,800)
     if config.Background then
         local bg = Instance.new("ImageLabel")
         bg.Name = "ZvmBackground"
@@ -1784,6 +1745,7 @@ function ZvmUI.CreateWindow(config)
         saveElapsed()
         task.delay(0.6, function()
             for _, c in ipairs(window._connections) do c:Disconnect() end
+            if viewportFitConn then viewportFitConn:Disconnect() end
             if gui then gui:Destroy() end
         end)
     end)
@@ -1797,13 +1759,17 @@ function ZvmUI.CreateWindow(config)
         if not dragging then return end
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
             local delta = input.Position - dragStart
-            root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            local vp = CAM.ViewportSize
+            local halfW, halfH = root.AbsoluteSize.X/2, root.AbsoluteSize.Y/2
+            local centerX = math.clamp(vp.X/2 + startPos.X.Offset + delta.X, math.min(halfW, vp.X/2), math.max(vp.X-halfW, vp.X/2))
+            local centerY = math.clamp(vp.Y/2 + startPos.Y.Offset + delta.Y, math.min(halfH, vp.Y/2), math.max(vp.Y-halfH, vp.Y/2))
+            root.Position = UDim2.new(0.5, centerX-vp.X/2, 0.5, centerY-vp.Y/2)
         end
     end))
     table.insert(window._connections, UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
     end))
-    rootScaleAnim:Set(1)
+    rootScaleAnim:Set(rootFitScale)
     return window
 end
 
@@ -2097,9 +2063,15 @@ local function buildClassicUI()
     corner(main:FindFirstChild("VoidBackground"),8)
     local mainStroke=stroke(main,C.Cyan,1,0.5)
     techCorners(main,C.Cyan,14,2,0.1)
-    local mainScale=fitScale(main,WIN_W,24,0.15,WIN_H)
-    local mainAnimScale=Instance.new("UIScale");mainAnimScale.Scale=1;mainAnimScale.Parent=main
-    addWindowResize(main,main,280,300,600,700)
+    local mainScale=fitScale(main,WIN_W,30,0.4)
+    local function keepClassicOnScreen()
+        local vp=CAM.ViewportSize
+        local scaledW,scaledH=main.AbsoluteSize.X,main.AbsoluteSize.Y
+        main.Position=UD.fromOffset(math.max(8,(vp.X-scaledW)/2),math.max(8,(vp.Y-scaledH)/2))
+        mainHomePos=main.Position
+    end
+    keepClassicOnScreen()
+    CAM:GetPropertyChangedSignal("ViewportSize"):Connect(keepClassicOnScreen)
     local topGrad=grad(new("Frame",{Size=UD.new(1,-24,0,2),Position=UD.new(0,12,0,0),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,Parent=main}),C.Cyan,C.Purple,0)
     topGrad.Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(.5,0),NumberSequenceKeypoint.new(1,1)})
     local titleBar=new("Frame",{Size=UD.new(1,0,0,32),BackgroundColor3=C.Panel,BackgroundTransparency=0.35,BorderSizePixel=0,Parent=main});corner(titleBar,8)
@@ -2114,7 +2086,7 @@ local function buildClassicUI()
     new("TextLabel",{Position=UD.new(1,-78,.5,-5),Size=UD.fromOffset(28,10),BackgroundTransparency=1,Text="ONLINE",TextColor3=C.Green,Font=Enum.Font.Code,TextSize=8,TextXAlignment=Enum.TextXAlignment.Left,Parent=titleBar})
     local minBtn=new("TextButton",{Position=UD.new(1,-38,0,7),Size=UD.fromOffset(14,14),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text="",AutoButtonColor=false,ZIndex=5,Parent=titleBar});corner(minBtn,3);stroke(minBtn,C.Line,1,0.4)
     new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(6,1.5),BackgroundColor3=C.Dim,BorderSizePixel=0,Parent=minBtn})
-    local closeBtn=new("TextButton",{Position=UD.new(1,-22,0,7),Size=UD.fromOffset(14,14),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text="",AutoButtonColor=false,ZIndex=5,Parent=titleBar});corner(closeBtn,3);stroke(closeBtn,C.Line,1,0.4)
+    local closeBtn=new("TextButton",{Position=UD.new(1,-30,0,3),Size=UD.fromOffset(26,26),BackgroundColor3=C.Panel2,BorderSizePixel=0,Text="",AutoButtonColor=false,ZIndex=5,Parent=titleBar});corner(closeBtn,3);stroke(closeBtn,C.Line,1,0.4)
     new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(6,1.5),Rotation=45,BackgroundColor3=C.Dim,BorderSizePixel=0,Parent=closeBtn})
     new("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UD.fromScale(.5,.5),Size=UD.fromOffset(6,1.5),Rotation=-45,BackgroundColor3=C.Dim,BorderSizePixel=0,Parent=closeBtn})
     local tabs={"主要","通用","视觉","剥削","碰撞","自瞄"}
@@ -2499,25 +2471,25 @@ local function buildClassicUI()
     mini:GetPropertyChangedSignal("Position"):Connect(function() if mini.Visible then miniHomePos=mini.Position end end)
     makeDraggable(mini,mini,function()
         mini.Visible=false;main.Position=mainHomePos;main.Visible=true
-        mainAnimScale.Scale=0.72;tw(mainAnimScale,0.55,{Scale=1},Enum.EasingStyle.Back)
+        mainScale.Scale=0.72;tw(mainScale,0.55,{Scale=1},Enum.EasingStyle.Back)
     end)
     makeDraggable(main,dragHandle)
     minBtn.Activated:Connect(function()
         tw(minBtn,0.08,{BackgroundColor3=C.Cyan});tw(minBtn,0.2,{BackgroundColor3=C.Panel2})
-        main.Visible=false;mainAnimScale.Scale=1
+        main.Visible=false;mainScale.Scale=1
         mini.Position=UD.fromOffset(CAM.ViewportSize.X-MINI-20,CAM.ViewportSize.Y*0.4);miniHomePos=mini.Position
         mini.Visible=true;msc.Scale=0.3;tw(msc,0.5,{Scale=1},Enum.EasingStyle.Back)
     end)
     closeBtn.Activated:Connect(function()
         tw(closeBtn,0.08,{BackgroundColor3=C.Red})
-        tw(mainAnimScale,0.26,{Scale=0.8},Enum.EasingStyle.Back)
+        tw(mainScale,0.26,{Scale=0.8},Enum.EasingStyle.Back)
         task.wait(0.28)
-        mini.Visible=false;main.Visible=false;mainAnimScale.Scale=1
+        mini.Visible=false;main.Visible=false;mainScale.Scale=1
         closeAllFeatures()
         task.wait(0.05);gui:Destroy()
     end)
-    main.Visible=true;mainAnimScale.Scale=0.78
-    tw(mainAnimScale,0.6,{Scale=1},Enum.EasingStyle.Back)
+    main.Visible=true;mainScale.Scale=0.78
+    tw(mainScale,0.6,{Scale=1},Enum.EasingStyle.Back)
     task.spawn(function()
         while main.Parent do
             local p2=(math.sin(os.clock()*2)+1)/2
